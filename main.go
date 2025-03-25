@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,24 +13,24 @@ import (
 	"tvtec/controller"
 	"tvtec/models"
 	"tvtec/repository"
-	"tvtec/services"
+	"tvtec/service"
 )
 
 func main() {
-	// Obtém a connection string do Supabase a partir da variável de ambiente DATABASE_URL
+	// Carrega a connection string do Supabase a partir da variável de ambiente
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("Variável de ambiente DATABASE_URL não definida")
 	}
 
-	// Abre a conexão com o PostgreSQL utilizando o driver do GORM para Postgres
+	// Abre a conexão com o PostgreSQL usando o driver do GORM
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Erro ao conectar ao PostgreSQL: %v", err)
 	}
 
 	// Executa o AutoMigrate para criar/atualizar as tabelas
-	if err := db.AutoMigrate(&models.Aluno{}, &models.Curso{}); err != nil {
+	if err := db.AutoMigrate(&models.Aluno{}, &models.Curso{}, &models.Inscricao{}); err != nil {
 		log.Fatalf("Erro ao migrar o banco de dados: %v", err)
 	}
 
@@ -44,11 +46,21 @@ func main() {
 	// Inicializa o roteador do Gin
 	router := gin.Default()
 
+	// Configura o middleware CORS para permitir requisições de qualquer origem
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"}, // ou especifique as origens permitidas, ex: "http://seu-frontend.com"
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
 	// Registra as rotas dos controllers
 	alunoController.RegisterRoutes(router)
 	cursoController.RegisterRoutes(router)
 
-	// Obtém a porta da variável de ambiente PORT, ou usa 8080 como padrão
+	// Obtém a porta definida na variável de ambiente PORT, ou usa 8080 como padrão
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
