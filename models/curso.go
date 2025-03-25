@@ -17,7 +17,7 @@ func (ct *CustomTime) UnmarshalJSON(b []byte) error {
 	// Remove as aspas do JSON.
 	s := strings.Trim(string(b), "\"")
 	// Faz o parse usando o layout customizado.
-	t, err := time.Parse("2006/01/02", s)
+	t, err := time.Parse("02/01/2006", s)
 	if err != nil {
 		return err
 	}
