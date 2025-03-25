@@ -10,64 +10,59 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"tvtec/controller"
-	"tvtec/middleware" // importe o middleware criado
+	"tvtec/controller" // ajuste o caminho conforme sua estrutura de pastas
 	"tvtec/models"
 	"tvtec/repository"
 	"tvtec/service"
 )
 
 func main() {
-	// Lê a variável de ambiente com a connection string do Supabase/PostgreSQL.
+	// Lê a connection string do Supabase (ou outro serviço) a partir da variável de ambiente DATABASE_URL
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("Variável de ambiente DATABASE_URL não definida")
 	}
 
-	// Conecta ao PostgreSQL usando o driver do GORM.
+	// Abre a conexão com o PostgreSQL usando o driver do GORM
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Erro ao conectar ao PostgreSQL: %v", err)
 	}
 
-	// Executa o AutoMigrate para criar/atualizar as tabelas.
+	// Executa o AutoMigrate para criar/atualizar as tabelas no banco de dados
 	if err := db.AutoMigrate(&models.Aluno{}, &models.Curso{}, &models.Inscricao{}); err != nil {
 		log.Fatalf("Erro ao migrar o banco de dados: %v", err)
 	}
 
-	// Instancia os repositórios e serviços.
+	// Instancia os repositórios e serviços
 	alunoRepo := repository.NewAlunoRepository(db)
 	alunoService := service.NewAlunoService(db)
 	cursoService := service.NewCursoService(db)
 
-	// Instancia os controllers.
+	// Instancia os controllers
 	alunoController := controller.NewAlunoController(alunoService, alunoRepo)
 	cursoController := controller.NewCursoController(cursoService)
 
-	// Inicializa o roteador do Gin.
+	// Inicializa o roteador Gin com o middleware de Recovery
 	router := gin.New()
-
-	// Use o middleware de Recovery padrão do Gin para capturar panics.
 	router.Use(gin.Recovery())
 
-	// Use o middleware customizado de erro.
-	router.Use(middleware.ErrorMiddleware())
-
-	// Configuração do CORS para permitir requisições de outros domínios.
+	// Configuração do middleware CORS para permitir requisições de outros domínios,
+	// incluindo o cabeçalho customizado "x-usuario"
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // Em produção, especifique as origens permitidas.
+		AllowOrigins:     []string{"*"}, // ou especifique as origens permitidas, ex.: "http://localhost:5173"
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "x-usuario"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Registra as rotas dos controllers.
+	// Registra as rotas dos controllers
 	alunoController.RegisterRoutes(router)
 	cursoController.RegisterRoutes(router)
 
-	// Define a porta da aplicação.
+	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
