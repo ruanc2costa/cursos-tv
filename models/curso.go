@@ -51,6 +51,7 @@ type Curso struct {
 	Data         CustomTime `gorm:"not null" json:"data"`
 	CargaHoraria int32      `gorm:"not null" json:"cargaHoraria"`
 	Certificado  string     `gorm:"not null" json:"certificado"`
+	Vagas        int32      `gorm:"not null" json:"vagas"` // novo campo para vagas
 
 	AlunoID *uint  `gorm:"default:null" json:"alunoId,omitempty"`
 	Aluno   *Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
