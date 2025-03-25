@@ -2,9 +2,10 @@ package service
 
 import (
 	"errors"
-	"fmt"
+	"time"
+
 	"gorm.io/gorm"
-	"tvtec/models" // ajuste o import para o caminho correto do pacote models
+	"your_project/models" // ajuste o caminho conforme sua estrutura de pastas
 )
 
 // AlunoService gerencia as operações com a entidade Aluno.
@@ -17,61 +18,67 @@ func NewAlunoService(db *gorm.DB) *AlunoService {
 	return &AlunoService{db: db}
 }
 
-// AddAluno adiciona um novo aluno. Se o aluno for nulo, retorna um erro.
+// AddAluno cria um aluno e realiza a inscrição em um curso.
+// Se o aluno já existir (verificado pelo email):
+//   - Se ele já estiver inscrito no curso, nada é feito.
+//   - Caso contrário, cria uma nova inscrição para o curso.
+//
+// Se o aluno não existir, cria o aluno e a inscrição.
 func (s *AlunoService) AddAluno(aluno *models.Aluno) (*models.Aluno, error) {
 	if aluno == nil {
 		return nil, errors.New("aluno é nil")
 	}
 
-	result := s.db.Create(aluno)
-	if result.Error != nil {
-		return nil, result.Error
+	// Verifica se pelo menos um curso foi informado.
+	if len(aluno.Cursos) == 0 {
+		return nil, errors.New("deve ser informado pelo menos um curso")
 	}
+	selectedCurso := aluno.Cursos[0]
+
+	// Tenta encontrar um aluno existente pelo email e carrega os cursos já associados.
+	var existingAluno models.Aluno
+	err := s.db.Where("email = ?", aluno.Email).Preload("Cursos").First(&existingAluno).Error
+	if err == nil {
+		// Aluno já existe. Verifica se já está inscrito no curso.
+		var alreadyEnrolled bool
+		for _, c := range existingAluno.Cursos {
+			if c.ID == selectedCurso.ID {
+				alreadyEnrolled = true
+				break
+			}
+		}
+
+		if !alreadyEnrolled {
+			// Cria uma nova inscrição (registro na tabela Inscricao).
+			newInscricao := models.Inscricao{
+				AlunoID:       existingAluno.ID,
+				CursoID:       selectedCurso.ID,
+				DataInscricao: time.Now(),
+			}
+			if err := s.db.Create(&newInscricao).Error; err != nil {
+				return nil, err
+			}
+		}
+		return &existingAluno, nil
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Erro diferente de "registro não encontrado"
+		return nil, err
+	}
+
+	// Se o aluno não existe, cria o novo aluno.
+	if err := s.db.Create(aluno).Error; err != nil {
+		return nil, err
+	}
+
+	// Após criar o aluno, cria a inscrição para o curso selecionado.
+	newInscricao := models.Inscricao{
+		AlunoID:       aluno.ID,
+		CursoID:       selectedCurso.ID,
+		DataInscricao: time.Now(),
+	}
+	if err := s.db.Create(&newInscricao).Error; err != nil {
+		return nil, err
+	}
+
 	return aluno, nil
-}
-
-// GetAllAlunos retorna todos os alunos registrados.
-func (s *AlunoService) GetAllAlunos() ([]models.Aluno, error) {
-	var alunos []models.Aluno
-	result := s.db.Find(&alunos)
-	return alunos, result.Error
-}
-
-// GetAluno busca um aluno pelo ID.
-func (s *AlunoService) GetAluno(id uint) (*models.Aluno, error) {
-	var aluno models.Aluno
-	result := s.db.First(&aluno, id)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, errors.New(fmt.Sprintf("Aluno não encontrado com o id %d", id))
-	}
-	return &aluno, result.Error
-}
-
-// UpdateAluno atualiza os dados de um aluno existente.
-func (s *AlunoService) UpdateAluno(id uint, novoAluno *models.Aluno) (*models.Aluno, error) {
-	var alunoExistente models.Aluno
-	result := s.db.First(&alunoExistente, id)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, errors.New(fmt.Sprintf("Aluno não encontrado com o id %d", id))
-	}
-
-	// Atualiza os campos desejados
-	alunoExistente.Nome = novoAluno.Nome
-	alunoExistente.Sobrenome = novoAluno.Sobrenome
-	alunoExistente.Sexo = novoAluno.Sexo
-	alunoExistente.DataNascto = novoAluno.DataNascto
-
-	result = s.db.Save(&alunoExistente)
-	return &alunoExistente, result.Error
-}
-
-// DeleteAluno remove um aluno com base no ID.
-func (s *AlunoService) DeleteAluno(id uint) error {
-	var aluno models.Aluno
-	result := s.db.First(&aluno, id)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return errors.New(fmt.Sprintf("Aluno não encontrado com o id %d", id))
-	}
-	result = s.db.Delete(&aluno)
-	return result.Error
 }
