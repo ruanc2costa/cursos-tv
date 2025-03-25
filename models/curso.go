@@ -1,24 +1,47 @@
 package models
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"strings"
 	"time"
 )
 
+// CustomTime define um tipo customizado para datas.
 type CustomTime struct {
 	time.Time
 }
 
+// UnmarshalJSON permite tratar o JSON no formato "2006/01/02".
 func (ct *CustomTime) UnmarshalJSON(b []byte) error {
-	// Remove quotes
+	// Remove as aspas do JSON.
 	s := strings.Trim(string(b), "\"")
-	// Parse using the custom layout
+	// Faz o parse usando o layout customizado.
 	t, err := time.Parse("2006/01/02", s)
 	if err != nil {
 		return err
 	}
 	ct.Time = t
 	return nil
+}
+
+// Value implementa a interface driver.Valuer para salvar no banco.
+func (ct CustomTime) Value() (driver.Value, error) {
+	return ct.Time, nil
+}
+
+// Scan implementa a interface sql.Scanner para ler do banco.
+func (ct *CustomTime) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	switch v := value.(type) {
+	case time.Time:
+		ct.Time = v
+		return nil
+	default:
+		return fmt.Errorf("não foi possível converter %T para CustomTime", value)
+	}
 }
 
 type Curso struct {
@@ -28,6 +51,7 @@ type Curso struct {
 	Data         CustomTime `gorm:"not null" json:"data"`
 	CargaHoraria int32      `gorm:"not null" json:"cargaHoraria"`
 	Certificado  string     `gorm:"not null" json:"certificado"`
-	AlunoID      *uint      `gorm:"default:null" json:"alunoId,omitempty"`
-	Aluno        *Aluno     `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
+
+	AlunoID *uint  `gorm:"default:null" json:"alunoId,omitempty"`
+	Aluno   *Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
 }
