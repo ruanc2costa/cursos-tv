@@ -9,20 +9,18 @@ import (
 
 const DateLayout = "02/01/2006" // dd/MM/yyyy
 
-// CustomDate encapsula time.Time para utilizar um formato customizado no JSON.
+// CustomDate encapsula time.Time para utilizar um formato customizado.
 type CustomDate struct {
 	time.Time
 }
 
-// UnmarshalJSON desserializa a data no formato dd/MM/yyyy
+// UnmarshalJSON desserializa a data no formato dd/MM/yyyy.
 func (cd *CustomDate) UnmarshalJSON(b []byte) error {
-	// Remove as aspas da string JSON
 	s := string(b)
 	if len(s) < 2 {
 		return fmt.Errorf("data inválida")
 	}
-	s = s[1 : len(s)-1]
-	// Converte a string para time.Time usando o layout definido
+	s = s[1 : len(s)-1] // remove aspas
 	t, err := time.Parse(DateLayout, s)
 	if err != nil {
 		return err
@@ -31,19 +29,19 @@ func (cd *CustomDate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// MarshalJSON serializa a data no formato dd/MM/yyyy
+// MarshalJSON serializa a data no formato dd/MM/yyyy.
 func (cd *CustomDate) MarshalJSON() ([]byte, error) {
 	formatted := cd.Format(DateLayout)
 	return json.Marshal(formatted)
 }
 
-// Value implementa o método driver.Valuer para que o CustomDate seja armazenado no banco como time.Time.
-// Aqui retornamos o valor em UTC para garantir compatibilidade com o PostgreSQL.
+// Value implementa a interface driver.Valuer para converter CustomDate em valor que o banco aceita.
+// Nesse exemplo, formata a data para ISO 8601.
 func (cd *CustomDate) Value() (driver.Value, error) {
-	return cd.Time.UTC(), nil
+	return cd.Time.UTC().Format("2006-01-02 15:04:05Z07:00"), nil
 }
 
-// Scan implementa o método sql.Scanner para converter dados do banco para CustomDate.
+// Scan implementa a interface sql.Scanner para converter dados do banco para CustomDate.
 func (cd *CustomDate) Scan(value interface{}) error {
 	if value == nil {
 		cd.Time = time.Time{}
