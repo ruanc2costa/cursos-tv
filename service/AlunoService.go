@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"tvtec/models" // ajuste conforme sua estrutura de pastas
+	"tvtec/models" // ajuste o caminho conforme sua estrutura de pastas
 )
 
 // AlunoService gerencia as operações com a entidade Aluno.
@@ -22,7 +22,7 @@ func NewAlunoService(db *gorm.DB) *AlunoService {
 // AddAluno cria um aluno e realiza a inscrição em um curso.
 // Se o aluno já existir (verificado pelo email) e não estiver inscrito no curso informado,
 // cria uma nova inscrição. Se o aluno não existir, cria o aluno e realiza a inscrição.
-// Antes de tudo, verifica se o CPF já existe (retornando erro de conflito) e se o curso possui vagas disponíveis.
+// Verifica também se o CPF já existe e se o curso possui vagas disponíveis.
 func (s *AlunoService) AddAluno(aluno *models.Aluno) (*models.Aluno, error) {
 	// Validação básica.
 	if aluno == nil {
@@ -52,18 +52,19 @@ func (s *AlunoService) AddAluno(aluno *models.Aluno) (*models.Aluno, error) {
 	if err := s.db.First(&curso, selectedCurso.ID).Error; err != nil {
 		return nil, err
 	}
+	// Verifica se há vagas disponíveis.
 	if curso.VagasPreenchidas >= curso.VagasTotais {
 		return nil, fmt.Errorf("não há vagas disponíveis para o curso %s", curso.Nome)
 	}
 
-	// Tenta encontrar um aluno existente pelo email (com preload de cursos).
+	// Tenta encontrar um aluno existente pelo email com preload de cursos.
 	var existingAluno models.Aluno
 	err = s.db.Where("email = ?", aluno.Email).Preload("Cursos").First(&existingAluno).Error
 	if err == nil {
 		// Aluno já existe; verifica se já está inscrito no curso.
 		for _, c := range existingAluno.Cursos {
 			if c.ID == selectedCurso.ID {
-				// Já está inscrito, retorna o aluno existente.
+				// Já está inscrito; retorna o aluno existente.
 				return &existingAluno, nil
 			}
 		}
@@ -116,4 +117,31 @@ func (s *AlunoService) AddAluno(aluno *models.Aluno) (*models.Aluno, error) {
 		return nil, err
 	}
 	return aluno, nil
+}
+
+// GetAllAlunos retorna todos os alunos com seus cursos associados.
+func (s *AlunoService) GetAllAlunos() ([]models.Aluno, error) {
+	var alunos []models.Aluno
+	if err := s.db.Preload("Cursos").Find(&alunos).Error; err != nil {
+		return nil, err
+	}
+	return alunos, nil
+}
+
+// GetAluno busca um aluno pelo ID, carregando os cursos associados.
+func (s *AlunoService) GetAluno(id uint) (*models.Aluno, error) {
+	var aluno models.Aluno
+	if err := s.db.Preload("Cursos").First(&aluno, id).Error; err != nil {
+		return nil, err
+	}
+	return &aluno, nil
+}
+
+// DeleteAluno remove um aluno do banco de dados.
+func (s *AlunoService) DeleteAluno(id uint) error {
+	var aluno models.Aluno
+	if err := s.db.First(&aluno, id).Error; err != nil {
+		return err
+	}
+	return s.db.Delete(&aluno).Error
 }
