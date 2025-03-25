@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"your_project/models" // ajuste o caminho conforme sua estrutura de pastas
+	"tvtec/models" // ajuste o caminho conforme sua estrutura de pastas
 )
 
 // AlunoService gerencia as operações com a entidade Aluno.
