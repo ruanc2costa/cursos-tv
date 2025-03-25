@@ -1,13 +1,15 @@
 package models
 
+import "time"
+
 // Curso representa a entidade Curso.
 type Curso struct {
-	ID           uint       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Nome         string     `gorm:"not null" json:"nome"`
-	Professor    string     `gorm:"not null" json:"professor"`
-	Data         CustomDate `gorm:"type:timestamp with time zone;not null" json:"data"`
-	CargaHoraria int32      `gorm:"not null" json:"cargaHoraria"`
-	Certificado  string     `gorm:"not null" json:"certificado"`
+	ID           uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Nome         string    `gorm:"not null" json:"nome"`
+	Professor    string    `gorm:"not null" json:"professor"`
+	Data         time.Time `gorm:"not null" json:"data"`
+	CargaHoraria int32     `gorm:"not null" json:"cargaHoraria"`
+	Certificado  string    `gorm:"not null" json:"certificado"`
 
 	// Permite que a coluna aluno_id seja nula.
 	AlunoID *uint  `gorm:"default:null" json:"alunoId,omitempty"`
