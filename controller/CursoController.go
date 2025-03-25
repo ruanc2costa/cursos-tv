@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"tvtec/models"   // ajuste para o caminho correto dos seus models
-	"tvtec/services" // ajuste para o caminho correto dos seus serviços
+	"tvtec/models"  // ajuste para o caminho correto dos seus models
+	"tvtec/service" // ajuste para o caminho correto dos seus serviços
 )
 
 // CursoController gerencia os endpoints relacionados à entidade Curso.

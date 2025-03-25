@@ -11,44 +11,51 @@ import (
 	"gorm.io/gorm"
 
 	"tvtec/controller"
+	"tvtec/middleware" // importe o middleware criado
 	"tvtec/models"
 	"tvtec/repository"
-	"tvtec/services"
+	"tvtec/service"
 )
 
 func main() {
-	// Carrega a connection string do Supabase a partir da variável de ambiente
+	// Lê a variável de ambiente com a connection string do Supabase/PostgreSQL.
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("Variável de ambiente DATABASE_URL não definida")
 	}
 
-	// Abre a conexão com o PostgreSQL usando o driver do GORM
+	// Conecta ao PostgreSQL usando o driver do GORM.
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Erro ao conectar ao PostgreSQL: %v", err)
 	}
 
-	// Executa o AutoMigrate para criar/atualizar as tabelas
+	// Executa o AutoMigrate para criar/atualizar as tabelas.
 	if err := db.AutoMigrate(&models.Aluno{}, &models.Curso{}, &models.Inscricao{}); err != nil {
 		log.Fatalf("Erro ao migrar o banco de dados: %v", err)
 	}
 
-	// Instancia os repositórios e serviços
+	// Instancia os repositórios e serviços.
 	alunoRepo := repository.NewAlunoRepository(db)
 	alunoService := service.NewAlunoService(db)
 	cursoService := service.NewCursoService(db)
 
-	// Instancia os controllers
+	// Instancia os controllers.
 	alunoController := controller.NewAlunoController(alunoService, alunoRepo)
 	cursoController := controller.NewCursoController(cursoService)
 
-	// Inicializa o roteador do Gin
-	router := gin.Default()
+	// Inicializa o roteador do Gin.
+	router := gin.New()
 
-	// Configura o middleware CORS para permitir requisições de qualquer origem
+	// Use o middleware de Recovery padrão do Gin para capturar panics.
+	router.Use(gin.Recovery())
+
+	// Use o middleware customizado de erro.
+	router.Use(middleware.ErrorMiddleware())
+
+	// Configuração do CORS para permitir requisições de outros domínios.
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // ou especifique as origens permitidas, ex: "http://seu-frontend.com"
+		AllowOrigins:     []string{"*"}, // Em produção, especifique as origens permitidas.
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -56,16 +63,15 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Registra as rotas dos controllers
+	// Registra as rotas dos controllers.
 	alunoController.RegisterRoutes(router)
 	cursoController.RegisterRoutes(router)
 
-	// Obtém a porta definida na variável de ambiente PORT, ou usa 8080 como padrão
+	// Define a porta da aplicação.
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-
 	log.Printf("API iniciada na porta %s", port)
 	router.Run(":" + port)
 }
