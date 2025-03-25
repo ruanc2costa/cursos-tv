@@ -9,7 +9,7 @@ import (
 
 const DateLayout = "02/01/2006" // dd/MM/yyyy
 
-// CustomDate encapsula time.Time para utilizar um formato customizado
+// CustomDate encapsula time.Time para utilizar um formato customizado no JSON.
 type CustomDate struct {
 	time.Time
 }
@@ -38,8 +38,9 @@ func (cd *CustomDate) MarshalJSON() ([]byte, error) {
 }
 
 // Value implementa o método driver.Valuer para que o CustomDate seja armazenado no banco como time.Time.
+// Aqui retornamos o valor em UTC para garantir compatibilidade com o PostgreSQL.
 func (cd *CustomDate) Value() (driver.Value, error) {
-	return cd.Time, nil
+	return cd.Time.UTC(), nil
 }
 
 // Scan implementa o método sql.Scanner para converter dados do banco para CustomDate.
@@ -48,7 +49,6 @@ func (cd *CustomDate) Scan(value interface{}) error {
 		cd.Time = time.Time{}
 		return nil
 	}
-
 	switch v := value.(type) {
 	case time.Time:
 		cd.Time = v
