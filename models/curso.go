@@ -11,7 +11,7 @@ type Curso struct {
 	Professor    string    `gorm:"not null" json:"professor"`
 	DataInicio   time.Time `gorm:"not null" json:"dataInicio"`
 	DataFim      time.Time `gorm:"not null" json:"dataFim"`
-	CargaHoraria int32     `gorm:"not null" json:"cargaHoraria`
+	CargaHoraria int32     `gorm:"not null" json:"cargaHoraria"`
 	Certificado  string    `gorm:"not null" json:"certificado"`
 
 	// Permite que a coluna aluno_id seja nula.
