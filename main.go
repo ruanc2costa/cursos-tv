@@ -13,7 +13,7 @@ import (
 	"tvtec/controller"
 	"tvtec/models"
 	"tvtec/repository"
-	"tvtec/service"
+	"tvtec/services"
 )
 
 func main() {
