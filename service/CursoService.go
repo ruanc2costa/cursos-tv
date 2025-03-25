@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
-	"tvtec/models" // ajuste para o caminho correto dos seus modelos
+	"tvtec/models" // ajuste o caminho conforme sua estrutura de pastas
 )
 
 // CursoService gerencia as operações para a entidade Curso.
@@ -42,9 +42,6 @@ func (s *CursoService) GetAllCursos() ([]models.Curso, error) {
 func (s *CursoService) GetCurso(id uint) (*models.Curso, error) {
 	var curso models.Curso
 	if err := s.db.First(&curso, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New(fmt.Sprintf("Curso não encontrado com o id %d", id))
-		}
 		return nil, err
 	}
 	return &curso, nil
@@ -54,17 +51,15 @@ func (s *CursoService) GetCurso(id uint) (*models.Curso, error) {
 func (s *CursoService) UpdateCurso(id uint, novoCurso *models.Curso) (*models.Curso, error) {
 	var cursoExistente models.Curso
 	if err := s.db.First(&cursoExistente, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New(fmt.Sprintf("Curso não encontrado com o id %d", id))
-		}
-		return nil, err
+		return nil, errors.New(fmt.Sprintf("Curso não encontrado com o id %d", id))
 	}
 
-	// Atualiza os campos desejados
+	// Atualiza os campos desejados usando o campo único "Data"
 	cursoExistente.Nome = novoCurso.Nome
 	cursoExistente.Professor = novoCurso.Professor
-	cursoExistente.DataInicio = novoCurso.DataInicio
-	cursoExistente.DataFim = novoCurso.DataFim
+	cursoExistente.Data = novoCurso.Data
+	cursoExistente.CargaHoraria = novoCurso.CargaHoraria
+	cursoExistente.Certificado = novoCurso.Certificado
 
 	if err := s.db.Save(&cursoExistente).Error; err != nil {
 		return nil, err
@@ -72,13 +67,10 @@ func (s *CursoService) UpdateCurso(id uint, novoCurso *models.Curso) (*models.Cu
 	return &cursoExistente, nil
 }
 
-// DeleteCurso remove um curso do banco de dados com base no ID.
+// DeleteCurso remove um curso do banco de dados.
 func (s *CursoService) DeleteCurso(id uint) error {
 	var curso models.Curso
 	if err := s.db.First(&curso, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New(fmt.Sprintf("Curso não encontrado com o id %d", id))
-		}
 		return err
 	}
 	return s.db.Delete(&curso).Error
