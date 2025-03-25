@@ -1,23 +1,30 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"log"
-	"tvtec/models/controller"
-	"tvtec/repository"
-	service "tvtec/services"
+	"os"
 
-	"gorm.io/driver/mysql"
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"tvtec/models" // ajuste o import conforme a localização dos seus modelos
+
+	"tvtec/controller"
+	"tvtec/models"
+	"tvtec/repository"
+	"tvtec/services"
 )
 
 func main() {
-	// Configuração da conexão com o MySQL (ajuste conforme necessário)
-	dsn := "root:nova_senha@tcp(localhost:3306)/cadastrotv?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Obtém a connection string do Supabase a partir da variável de ambiente DATABASE_URL
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("Variável de ambiente DATABASE_URL não definida")
+	}
+
+	// Abre a conexão com o PostgreSQL utilizando o driver do GORM para Postgres
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Erro ao conectar ao MySQL: %v", err)
+		log.Fatalf("Erro ao conectar ao PostgreSQL: %v", err)
 	}
 
 	// Executa o AutoMigrate para criar/atualizar as tabelas
@@ -41,7 +48,12 @@ func main() {
 	alunoController.RegisterRoutes(router)
 	cursoController.RegisterRoutes(router)
 
-	// Inicia o servidor na porta 8080
-	log.Println("API iniciada na porta 8080")
-	router.Run(":8080")
+	// Obtém a porta da variável de ambiente PORT, ou usa 8080 como padrão
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("API iniciada na porta %s", port)
+	router.Run(":" + port)
 }
