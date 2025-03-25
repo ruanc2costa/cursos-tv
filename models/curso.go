@@ -12,7 +12,7 @@ type CustomTime struct {
 	time.Time
 }
 
-// UnmarshalJSON permite tratar o JSON no formato "2006/01/02".
+// UnmarshalJSON permite tratar o JSON no formato "dd/MM/yyyy".
 func (ct *CustomTime) UnmarshalJSON(b []byte) error {
 	// Remove as aspas do JSON.
 	s := strings.Trim(string(b), "\"")
@@ -44,14 +44,16 @@ func (ct *CustomTime) Scan(value interface{}) error {
 	}
 }
 
+// Curso representa um curso com data, carga horária, certificado e controle de vagas.
 type Curso struct {
-	ID           uint       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Nome         string     `gorm:"not null" json:"nome"`
-	Professor    string     `gorm:"not null" json:"professor"`
-	Data         CustomTime `gorm:"not null" json:"data"`
-	CargaHoraria int32      `gorm:"not null" json:"cargaHoraria"`
-	Certificado  string     `gorm:"not null" json:"certificado"`
-	Vagas        int32      `gorm:"not null" json:"vagas"` // novo campo para vagas
+	ID               uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Nome             string     `gorm:"not null" json:"nome"`
+	Professor        string     `gorm:"not null" json:"professor"`
+	Data             CustomTime `gorm:"not null" json:"data"`
+	CargaHoraria     int32      `gorm:"not null" json:"cargaHoraria"`
+	Certificado      string     `gorm:"not null" json:"certificado"`
+	VagasTotais      int32      `gorm:"not null" json:"vagasTotais"`
+	VagasPreenchidas int32      `gorm:"not null" json:"vagasPreenchidas"`
 
 	AlunoID *uint  `gorm:"default:null" json:"alunoId,omitempty"`
 	Aluno   *Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
