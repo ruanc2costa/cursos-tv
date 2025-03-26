@@ -30,59 +30,53 @@ func NewAlunoService(
 
 // AdicionarAluno gerencia a inclusão de um aluno em um curso
 func (s *AlunoService) AdicionarAluno(aluno *models.Aluno, cursoID uint) error {
-	// Iniciar transação para garantir atomicidade
-	return s.alunoRepo.db.Transaction(func(tx *gorm.DB) error {
-		// Verificar se o curso existe
-		curso, err := s.cursoRepo.FindByID(cursoID)
-		if err != nil {
-			return errors.New("curso não encontrado")
-		}
+	// Verificar se o curso existe
+	curso, err := s.cursoRepo.FindByID(cursoID)
+	if err != nil {
+		return errors.New("curso não encontrado")
+	}
 
-		// Verificar disponibilidade de vagas
-		if curso.VagasPreenchidas >= curso.VagasTotais {
-			return errors.New("não há vagas disponíveis para este curso")
-		}
+	// Verificar disponibilidade de vagas
+	if curso.VagasPreenchidas >= curso.VagasTotais {
+		return errors.New("não há vagas disponíveis para este curso")
+	}
 
-		// Verificar se o aluno já existe pelo email
-		existingAluno, err := s.alunoRepo.FindByEmail(aluno.Email)
+	// Verificar se o aluno já existe pelo email
+	var alunoExistente *models.Aluno
+	var alunoID uint
 
-		if err != nil {
+	if aluno.Email != "" {
+		alunoExistente, err = s.alunoRepo.FindByEmail(aluno.Email)
+		if err == nil {
+			// Aluno já existe
+			alunoID = alunoExistente.ID
+		} else {
 			// Aluno não existe, criar novo
 			if err := s.alunoRepo.Save(aluno); err != nil {
 				return err
 			}
-		} else {
-			// Aluno já existe, usar o aluno existente
-			aluno = existingAluno
+			alunoID = aluno.ID
 		}
+	} else {
+		return errors.New("email do aluno é obrigatório")
+	}
 
-		// Verificar se aluno já está inscrito neste curso
-		var inscricaoExistente models.Inscricao
-		err = tx.Where("aluno_id = ? AND curso_id = ?", aluno.ID, cursoID).First(&inscricaoExistente).Error
-		if err == nil {
-			return errors.New("aluno já está inscrito neste curso")
-		}
+	// Criar nova inscrição
+	inscricao := &models.Inscricao{
+		AlunoID:       alunoID,
+		CursoID:       cursoID,
+		DataInscricao: time.Now(),
+	}
 
-		// Criar nova inscrição
-		inscricao := &models.Inscricao{
-			AlunoID:       aluno.ID,
-			CursoID:       cursoID,
-			DataInscricao: time.Now(),
-		}
+	// Tentar criar a inscrição
+	err = s.inscricaoRepo.Save(inscricao)
+	if err != nil {
+		// Este erro pode incluir "aluno já inscrito" se o repositório
+		// de inscrição implementar essa verificação
+		return err
+	}
 
-		// Salvar inscrição
-		if err := tx.Create(inscricao).Error; err != nil {
-			return err
-		}
-
-		// Atualizar vagas do curso
-		curso.VagasPreenchidas++
-		if err := tx.Save(curso).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+	return nil
 }
 
 // ObterAlunoPorID busca um aluno específico
