@@ -60,30 +60,26 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Configuração de rotas
-	api := router.Group("/api/v1")
+	// Rotas para Aluno (no singular e sem prefixo api/v1)
+	aluno := router.Group("/aluno")
 	{
-		// Rotas para Alunos
-		alunos := api.Group("/aluno")
-		{
-			alunos.GET("/", alunoController.ListarAlunos)
-			alunos.GET("/:id", alunoController.ObterAlunoPorID)
-			alunos.POST("/", alunoController.CriarAluno)
-			alunos.PUT("/:id", alunoController.AtualizarAluno)
-			alunos.DELETE("/:id", alunoController.RemoverAluno)
-			alunos.POST("/curso/:cursoId", alunoController.AdicionarAlunoCurso)
-		}
+		aluno.GET("/", alunoController.ListarAlunos)
+		aluno.GET("/:id", alunoController.ObterAlunoPorID)
+		aluno.POST("/", alunoController.CriarAluno)
+		aluno.PUT("/:id", alunoController.AtualizarAluno)
+		aluno.DELETE("/:id", alunoController.RemoverAluno)
+		aluno.POST("/curso/:cursoId", alunoController.AdicionarAlunoCurso)
+	}
 
-		// Rotas para Cursos
-		cursos := api.Group("/curso")
-		{
-			cursos.GET("/", cursoController.ListarCursos)
-			cursos.GET("/:id", cursoController.ObterCursoPorID)
-			cursos.POST("/", cursoController.CriarCurso)
-			cursos.PUT("/:id", cursoController.AtualizarCurso)
-			cursos.DELETE("/:id", cursoController.RemoverCurso)
-			cursos.GET("/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
-		}
+	// Rotas para Curso (no singular e sem prefixo api/v1)
+	curso := router.Group("/curso")
+	{
+		curso.GET("/", cursoController.ListarCursos)
+		curso.GET("/:id", cursoController.ObterCursoPorID)
+		curso.POST("/", cursoController.CriarCurso)
+		curso.PUT("/:id", cursoController.AtualizarCurso)
+		curso.DELETE("/:id", cursoController.RemoverCurso)
+		curso.GET("/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
 	}
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
