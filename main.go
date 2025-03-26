@@ -64,7 +64,7 @@ func main() {
 	api := router.Group("/api/v1")
 	{
 		// Rotas para Alunos
-		alunos := api.Group("/alunos")
+		alunos := api.Group("/aluno")
 		{
 			alunos.GET("/", alunoController.ListarAlunos)
 			alunos.GET("/:id", alunoController.ObterAlunoPorID)
@@ -75,7 +75,7 @@ func main() {
 		}
 
 		// Rotas para Cursos
-		cursos := api.Group("/cursos")
+		cursos := api.Group("/curso")
 		{
 			cursos.GET("/", cursoController.ListarCursos)
 			cursos.GET("/:id", cursoController.ObterCursoPorID)
