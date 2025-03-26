@@ -52,7 +52,7 @@ func main() {
 
 	// Configuração do middleware CORS para permitir requisições de outros domínios
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // ou especifique as origens permitidas
+		AllowOrigins:     []string{"http://localhost:5173"}, // ou especifique as origens permitidas
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "x-usuario"},
 		ExposeHeaders:    []string{"Content-Length"},
