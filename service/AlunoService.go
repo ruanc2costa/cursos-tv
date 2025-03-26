@@ -2,182 +2,160 @@ package service
 
 import (
 	"errors"
-	"fmt"
-	"log"
 	"time"
 
-	"gorm.io/gorm"
-	"tvtec/models" // ajuste conforme sua estrutura de pastas
+	"tvtec/models"
+	"tvtec/repository"
 )
 
-// AlunoService gerencia as operações com a entidade Aluno.
+// AlunoService contém a lógica de negócio para manipulação de alunos
 type AlunoService struct {
-	db *gorm.DB
+	alunoRepo     *repository.AlunoRepository
+	cursoRepo     *repository.CursoRepository
+	inscricaoRepo *repository.InscricaoRepository
 }
 
-// NewAlunoService cria uma nova instância do serviço.
-func NewAlunoService(db *gorm.DB) *AlunoService {
-	return &AlunoService{db: db}
+// NewAlunoService cria uma nova instância do serviço de alunos
+func NewAlunoService(
+	alunoRepo *repository.AlunoRepository,
+	cursoRepo *repository.CursoRepository,
+	inscricaoRepo *repository.InscricaoRepository,
+) *AlunoService {
+	return &AlunoService{
+		alunoRepo:     alunoRepo,
+		cursoRepo:     cursoRepo,
+		inscricaoRepo: inscricaoRepo,
+	}
 }
 
-// AddAluno cria um aluno e realiza a inscrição em um curso.
-// Se o aluno já existir (verificado pelo email) e não estiver inscrito no curso informado,
-// cria uma nova inscrição. Se o aluno não existir, cria o aluno e realiza a inscrição.
-// Antes de tudo, verifica se o CPF já existe (retornando erro de conflito) e se o curso possui vagas disponíveis.
-func (s *AlunoService) AddAluno(aluno *models.Aluno) (*models.Aluno, error) {
-	// Loga o início do processo de criação do aluno.
-	log.Printf("Iniciando a criação do aluno: %v", aluno)
-
-	// Validação básica.
-	if aluno == nil {
-		log.Println("Erro: aluno é nil")
-		return nil, errors.New("aluno é nil")
-	}
-	if aluno.CPF == "" {
-		log.Println("Erro: CPF não informado")
-		return nil, errors.New("CPF deve ser informado")
-	}
-	if len(aluno.Cursos) == 0 {
-		log.Println("Erro: nenhum curso informado")
-		return nil, errors.New("deve ser informado pelo menos um curso")
-	}
-
-	// Verifica se já existe um aluno com o mesmo CPF.
-	var alunoCPF models.Aluno
-	err := s.db.Where("cpf = ?", aluno.CPF).First(&alunoCPF).Error
-	if err == nil {
-		log.Printf("Erro: CPF já existe: %s", aluno.CPF)
-		return nil, fmt.Errorf("aluno com CPF duplicado: %s", aluno.CPF)
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("Erro ao consultar CPF: %v", err)
-		return nil, err
-	}
-
-	// Seleciona o curso informado (usamos o primeiro curso do array).
-	selectedCurso := aluno.Cursos[0]
-	log.Printf("Aluno será inscrito no curso com ID: %d", selectedCurso.ID)
-
-	// Carrega os dados atuais do curso para verificar as vagas.
-	var curso models.Curso
-	if err := s.db.First(&curso, selectedCurso.ID).Error; err != nil {
-		log.Printf("Erro ao carregar curso com ID %d: %v", selectedCurso.ID, err)
-		return nil, err
-	}
-
-	// Verifica se há vagas disponíveis.
-	if curso.VagasPreenchidas >= curso.VagasTotais {
-		log.Printf("Erro: Não há vagas disponíveis para o curso %s", curso.Nome)
-		return nil, fmt.Errorf("não há vagas disponíveis para o curso %s", curso.Nome)
-	}
-
-	// Tenta encontrar um aluno existente pelo email (com preload de cursos).
-	var existingAluno models.Aluno
-	err = s.db.Where("email = ?", aluno.Email).Preload("Cursos").First(&existingAluno).Error
-	if err == nil {
-		// Aluno já existe; verifica se já está inscrito no curso.
-		for _, c := range existingAluno.Cursos {
-			if c.ID == selectedCurso.ID {
-				// Já está inscrito, retorna o aluno existente.
-				log.Printf("Aluno com ID %d já está inscrito no curso %s", existingAluno.ID, curso.Nome)
-				return &existingAluno, nil
-			}
+// AdicionarAluno gerencia a inclusão de um aluno em um curso
+func (s *AlunoService) AdicionarAluno(aluno *models.Aluno, cursoID uint) error {
+	// Iniciar transação para garantir atomicidade
+	return s.alunoRepo.db.Transaction(func(tx *gorm.DB) error {
+		// Verificar se o curso existe
+		curso, err := s.cursoRepo.FindByID(cursoID)
+		if err != nil {
+			return errors.New("curso não encontrado")
 		}
 
-		// Se não estiver inscrito, cria uma nova inscrição para o curso.
-		newInscricao := models.Inscricao{
-			AlunoID:       existingAluno.ID,
-			CursoID:       selectedCurso.ID,
+		// Verificar disponibilidade de vagas
+		if curso.VagasPreenchidas >= curso.VagasTotais {
+			return errors.New("não há vagas disponíveis para este curso")
+		}
+
+		// Verificar se o aluno já existe pelo email
+		existingAluno, err := s.alunoRepo.FindByEmail(aluno.Email)
+
+		if err != nil {
+			// Aluno não existe, criar novo
+			if err := s.alunoRepo.Save(aluno); err != nil {
+				return err
+			}
+		} else {
+			// Aluno já existe, usar o aluno existente
+			aluno = existingAluno
+		}
+
+		// Verificar se aluno já está inscrito neste curso
+		var inscricaoExistente models.Inscricao
+		err = tx.Where("aluno_id = ? AND curso_id = ?", aluno.ID, cursoID).First(&inscricaoExistente).Error
+		if err == nil {
+			return errors.New("aluno já está inscrito neste curso")
+		}
+
+		// Criar nova inscrição
+		inscricao := &models.Inscricao{
+			AlunoID:       aluno.ID,
+			CursoID:       cursoID,
 			DataInscricao: time.Now(),
 		}
-		if err := s.db.Create(&newInscricao).Error; err != nil {
-			log.Printf("Erro ao criar inscrição para aluno %d no curso %s: %v", existingAluno.ID, curso.Nome, err)
-			return nil, err
+
+		// Salvar inscrição
+		if err := tx.Create(inscricao).Error; err != nil {
+			return err
 		}
 
-		// Incrementa as vagas preenchidas.
+		// Atualizar vagas do curso
 		curso.VagasPreenchidas++
-		if err := s.db.Save(&curso).Error; err != nil {
-			log.Printf("Erro ao atualizar vagas preenchidas para o curso %s: %v", curso.Nome, err)
-			return nil, err
+		if err := tx.Save(curso).Error; err != nil {
+			return err
 		}
 
-		// Recarrega o aluno com os cursos atualizados.
-		if err := s.db.Preload("Cursos").First(&existingAluno, existingAluno.ID).Error; err != nil {
-			log.Printf("Erro ao recarregar aluno %d: %v", existingAluno.ID, err)
-			return nil, err
-		}
-		log.Printf("Inscrição criada com sucesso para o aluno %s no curso %s", existingAluno.Nome, curso.Nome)
-		return &existingAluno, nil
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("Erro ao consultar aluno pelo email: %v", err)
-		return nil, err
-	}
+		return nil
+	})
+}
 
-	// Se o aluno não existir, cria o novo aluno.
-	if err := s.db.Create(aluno).Error; err != nil {
-		log.Printf("Erro ao criar o aluno: %v", err)
-		return nil, err
+// ObterAlunoPorID busca um aluno específico
+func (s *AlunoService) ObterAlunoPorID(id uint) (*models.Aluno, error) {
+	aluno, err := s.alunoRepo.FindByID(id)
+	if err != nil {
+		return nil, errors.New("aluno não encontrado")
 	}
-
-	// Após criar o aluno, realiza a inscrição no curso selecionado.
-	newInscricao := models.Inscricao{
-		AlunoID:       aluno.ID,
-		CursoID:       selectedCurso.ID,
-		DataInscricao: time.Now(),
-	}
-	if err := s.db.Create(&newInscricao).Error; err != nil {
-		log.Printf("Erro ao criar inscrição para o aluno %d no curso %s: %v", aluno.ID, curso.Nome, err)
-		return nil, err
-	}
-
-	// Incrementa as vagas preenchidas.
-	curso.VagasPreenchidas++
-	if err := s.db.Save(&curso).Error; err != nil {
-		log.Printf("Erro ao atualizar vagas preenchidas para o curso %s: %v", curso.Nome, err)
-		return nil, err
-	}
-
-	// Recarrega o aluno com os cursos atualizados.
-	if err := s.db.Preload("Cursos").First(aluno, aluno.ID).Error; err != nil {
-		log.Printf("Erro ao recarregar aluno %d: %v", aluno.ID, err)
-		return nil, err
-	}
-
-	log.Printf("Aluno %s criado e inscrito no curso %s com sucesso", aluno.Nome, curso.Nome)
 	return aluno, nil
 }
 
-// GetAllAlunos retorna todos os alunos com seus cursos associados.
-func (s *AlunoService) GetAllAlunos() ([]models.Aluno, error) {
-	var alunos []models.Aluno
-	if err := s.db.Preload("Cursos").Find(&alunos).Error; err != nil {
-		log.Printf("Erro ao obter todos os alunos: %v", err)
-		return nil, err
-	}
-	return alunos, nil
+// ListarAlunos recupera todos os alunos
+func (s *AlunoService) ListarAlunos() ([]models.Aluno, error) {
+	return s.alunoRepo.FindAll()
 }
 
-// GetAluno busca um aluno pelo ID, carregando os cursos associados.
-func (s *AlunoService) GetAluno(id uint) (*models.Aluno, error) {
-	var aluno models.Aluno
-	if err := s.db.Preload("Cursos").First(&aluno, id).Error; err != nil {
-		log.Printf("Erro ao buscar aluno com ID %d: %v", id, err)
-		return nil, err
+// CriarAluno realiza a criação de um novo aluno
+func (s *AlunoService) CriarAluno(aluno *models.Aluno) error {
+	// Validações básicas
+	if aluno.Nome == "" {
+		return errors.New("nome do aluno é obrigatório")
 	}
-	return &aluno, nil
+
+	if aluno.Email == "" {
+		return errors.New("email do aluno é obrigatório")
+	}
+
+	// Verificar se já existe aluno com este email
+	existente, _ := s.alunoRepo.FindByEmail(aluno.Email)
+	if existente != nil {
+		return errors.New("já existe um aluno cadastrado com este email")
+	}
+
+	return s.alunoRepo.Save(aluno)
 }
 
-// DeleteAluno remove um aluno do banco de dados.
-func (s *AlunoService) DeleteAluno(id uint) error {
-	var aluno models.Aluno
-	if err := s.db.First(&aluno, id).Error; err != nil {
-		log.Printf("Erro ao buscar aluno com ID %d para exclusão: %v", id, err)
+// AtualizarAluno atualiza as informações de um aluno existente
+func (s *AlunoService) AtualizarAluno(aluno *models.Aluno) error {
+	// Verificar se o aluno existe
+	existente, err := s.alunoRepo.FindByID(aluno.ID)
+	if err != nil {
+		return errors.New("aluno não encontrado")
+	}
+
+	// Manter campos importantes do registro original
+	if aluno.Nome == "" {
+		aluno.Nome = existente.Nome
+	}
+
+	if aluno.Email == "" {
+		aluno.Email = existente.Email
+	}
+
+	return s.alunoRepo.Save(aluno)
+}
+
+// RemoverAluno exclui um aluno
+func (s *AlunoService) RemoverAluno(id uint) error {
+	// Buscar aluno
+	aluno, err := s.alunoRepo.FindByID(id)
+	if err != nil {
+		return errors.New("aluno não encontrado")
+	}
+
+	// Verificar se aluno tem inscrições ativas
+	inscricoes, err := s.inscricaoRepo.FindByAluno(id)
+	if err != nil {
 		return err
 	}
-	if err := s.db.Delete(&aluno).Error; err != nil {
-		log.Printf("Erro ao excluir aluno com ID %d: %v", id, err)
-		return err
+
+	if len(inscricoes) > 0 {
+		return errors.New("não é possível remover aluno com inscrições ativas")
 	}
-	log.Printf("Aluno com ID %d excluído com sucesso", id)
-	return nil
+
+	return s.alunoRepo.Delete(aluno)
 }

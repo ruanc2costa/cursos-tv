@@ -6,82 +6,184 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"tvtec/models"
-	"tvtec/repository"
 	"tvtec/service"
 )
 
-// AlunoController gerencia os endpoints relacionados à entidade Aluno.
+// AlunoController gerencia as rotas e lógica HTTP para alunos
 type AlunoController struct {
-	alunoService    *service.AlunoService
-	alunoRepository *repository.AlunoRepository
+	service *service.AlunoService
 }
 
-func NewAlunoController(as *service.AlunoService, ar *repository.AlunoRepository) *AlunoController {
-	return &AlunoController{
-		alunoService:    as,
-		alunoRepository: ar,
-	}
+// NewAlunoController cria uma nova instância do controlador de alunos
+func NewAlunoController(service *service.AlunoService) *AlunoController {
+	return &AlunoController{service: service}
 }
 
-func (ctrl *AlunoController) RegisterRoutes(r *gin.Engine) {
-	grupo := r.Group("/aluno")
-	{
-		grupo.GET("", ctrl.GetAllAlunos)
-		grupo.GET("/:id", ctrl.GetAlunoByID)
-		grupo.POST("", ctrl.PostAluno)
-		grupo.DELETE("/:id", ctrl.DeleteAluno)
-	}
-}
-
-func (ctrl *AlunoController) GetAllAlunos(c *gin.Context) {
-	alunos, err := ctrl.alunoService.GetAllAlunos()
-	if err != nil {
-		// Adiciona o erro ao contexto e retorna (o middleware de erro cuidará da resposta)
-		c.Error(err)
-		return
-	}
-	c.JSON(http.StatusOK, alunos)
-}
-
-func (ctrl *AlunoController) GetAlunoByID(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := strconv.ParseUint(idParam, 10, 32)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	aluno, err := ctrl.alunoService.GetAluno(uint(id))
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	c.JSON(http.StatusOK, aluno)
-}
-
-func (ctrl *AlunoController) PostAluno(c *gin.Context) {
+// CriarAluno lida com a criação de um novo aluno
+func (c *AlunoController) CriarAluno(ctx *gin.Context) {
 	var aluno models.Aluno
-	if err := c.ShouldBindJSON(&aluno); err != nil {
-		c.Error(err)
+
+	// Vincula os dados JSON da requisição ao modelo Aluno
+	if err := ctx.ShouldBindJSON(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Dados inválidos",
+			"details": err.Error(),
+		})
 		return
 	}
-	novoAluno, err := ctrl.alunoService.AddAluno(&aluno)
-	if err != nil {
-		c.Error(err)
+
+	// Chama o serviço para criar o aluno
+	if err := c.service.CriarAluno(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao criar aluno",
+			"details": err.Error(),
+		})
 		return
 	}
-	c.JSON(http.StatusOK, novoAluno)
+
+	// Responde com sucesso
+	ctx.JSON(http.StatusCreated, aluno)
 }
 
-func (ctrl *AlunoController) DeleteAluno(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := strconv.ParseUint(idParam, 10, 32)
+// AdicionarAlunoCurso lida com a inclusão de um aluno em um curso
+func (c *AlunoController) AdicionarAlunoCurso(ctx *gin.Context) {
+	var aluno models.Aluno
+	cursoIDStr := ctx.Param("cursoId")
+
+	// Converte o ID do curso para uint
+	cursoID, err := strconv.ParseUint(cursoIDStr, 10, 64)
 	if err != nil {
-		c.Error(err)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de curso inválido",
+		})
 		return
 	}
-	if err := ctrl.alunoService.DeleteAluno(uint(id)); err != nil {
-		c.Error(err)
+
+	// Vincula os dados JSON da requisição ao modelo Aluno
+	if err := ctx.ShouldBindJSON(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Dados inválidos",
+			"details": err.Error(),
+		})
 		return
 	}
-	c.Status(http.StatusNoContent)
+
+	// Chama o serviço para adicionar aluno ao curso
+	if err := c.service.AdicionarAluno(&aluno, uint(cursoID)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao adicionar aluno ao curso",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Responde com sucesso
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Aluno adicionado ao curso com sucesso",
+		"aluno":   aluno,
+	})
+}
+
+// ListarAlunos recupera todos os alunos
+func (c *AlunoController) ListarAlunos(ctx *gin.Context) {
+	alunos, err := c.service.ListarAlunos()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Falha ao recuperar alunos",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, alunos)
+}
+
+// ObterAlunoPorID busca um aluno específico
+func (c *AlunoController) ObterAlunoPorID(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+
+	// Converte o ID para uint
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	aluno, err := c.service.ObterAlunoPorID(uint(id))
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"error":   "Aluno não encontrado",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, aluno)
+}
+
+// AtualizarAluno atualiza informações de um aluno
+func (c *AlunoController) AtualizarAluno(ctx *gin.Context) {
+	var aluno models.Aluno
+
+	// Vincula os dados JSON da requisição ao modelo Aluno
+	if err := ctx.ShouldBindJSON(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Dados inválidos",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Obtém o ID da URL
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	// Define o ID do aluno
+	aluno.ID = uint(id)
+
+	// Chama o serviço para atualizar o aluno
+	if err := c.service.AtualizarAluno(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao atualizar aluno",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, aluno)
+}
+
+// RemoverAluno exclui um aluno
+func (c *AlunoController) RemoverAluno(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+
+	// Converte o ID para uint
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	// Chama o serviço para remover o aluno
+	if err := c.service.RemoverAluno(uint(id)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao remover aluno",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Aluno removido com sucesso",
+	})
 }
