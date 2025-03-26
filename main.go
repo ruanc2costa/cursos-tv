@@ -17,31 +17,6 @@ import (
 	"tvtec/service"
 )
 
-// CORSMiddleware é um middleware personalizado que lida com solicitações CORS
-// Permite qualquer origem enquanto mantém suporte a credenciais
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Permitir todas as origens para desenvolvimento (remova essa linha para produção)
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-
-		// Configura os cabeçalhos CORS
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, x-usuario")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
-		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 horas
-
-		// Tratamento especial para solicitações preflight OPTIONS
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent) // 204 No Content
-			return
-		}
-
-		// Prossegue para o próximo middleware ou handler
-		c.Next()
-	}
-}
-
 func main() {
 	// Lê a connection string do banco de dados a partir da variável de ambiente DATABASE_URL
 	dsn := os.Getenv("DATABASE_URL")
@@ -84,8 +59,31 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(gin.Logger())
 
-	// Adiciona middleware personalizado de CORS antes de qualquer outro middleware
-	router.Use(CORSMiddleware())
+	// Adiciona middleware de CORS diretamente aqui
+	router.Use(func(c *gin.Context) {
+		// Permitir acesso de qualquer origem (incluindo HTTPS)
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// Permitir métodos HTTP específicos, incluindo suporte explícito para HTTPS
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+
+		// Permitir cabeçalhos específicos, incluindo aqueles usados para HTTPS
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With")
+
+		// Permitir credentials (cookies, etc.) - importante para sessões seguras em HTTPS
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+
+		// Tempo de cache do preflight
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 horas
+
+		// Se for uma requisição OPTIONS (preflight), retorna 204 No Content
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	})
 
 	// Middleware para log de todas as requisições (para debugging)
 	router.Use(func(c *gin.Context) {
