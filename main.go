@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"net/http"
 	"os"
@@ -20,19 +21,15 @@ import (
 // Permite qualquer origem enquanto mantém suporte a credenciais
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Obtém a origem da solicitação
-		origin := c.Request.Header.Get("Origin")
+		// Permitir todas as origens para desenvolvimento (remova essa linha para produção)
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-		// Se a origem estiver presente, configura os cabeçalhos CORS
-		// usando a origem exata em vez de "*" para permitir credenciais
-		if origin != "" {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, x-usuario")
-			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-			c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
-			c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 horas
-		}
+		// Configura os cabeçalhos CORS
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, x-usuario")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 horas
 
 		// Tratamento especial para solicitações preflight OPTIONS
 		if c.Request.Method == "OPTIONS" {
