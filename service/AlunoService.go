@@ -2,154 +2,217 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
-
 	"tvtec/models"
 	"tvtec/repository"
 )
 
-// AlunoService contém a lógica de negócio para manipulação de alunos
-type AlunoService struct {
-	alunoRepo     *repository.AlunoRepository
-	cursoRepo     *repository.CursoRepository
-	inscricaoRepo *repository.InscricaoRepository
+type AlunoService interface {
+	// ListarAlunos retorna todos os alunos cadastrados no sistema.
+	ListarAlunos() ([]models.Aluno, error)
+
+	// ObterAlunoPorID busca um aluno pelo seu ID.
+	ObterAlunoPorID(id uint) (*models.Aluno, error)
+
+	// CriarAluno cadastra um novo aluno no sistema.
+	CriarAluno(aluno *models.Aluno) error
+
+	// AtualizarAluno atualiza os dados de um aluno existente.
+	AtualizarAluno(aluno *models.Aluno) error
+
+	// RemoverAluno remove um aluno e suas inscrições do sistema.
+	RemoverAluno(id uint) error
+
+	// CadastrarAlunoEInscrever cadastra um novo aluno e o inscreve em um curso.
+	CadastrarAlunoEInscrever(aluno *models.Aluno, cursoID uint) error
+
+	// AdicionarAlunoCurso inscreve um aluno existente em um curso.
+	AdicionarAlunoCurso(alunoID, cursoID uint) error
+
+	// ListarInscricoesAluno retorna todas as inscrições de um aluno.
+	ListarInscricoesAluno(alunoID uint) ([]models.Inscricao, error)
 }
 
-// NewAlunoService cria uma nova instância do serviço de alunos
+type alunoService struct {
+	alunoRepo     repository.AlunoRepository
+	cursoRepo     repository.CursoRepository
+	inscricaoRepo repository.InscricaoRepository
+}
+
+// NewAlunoService cria uma nova instância do serviço de alunos.
 func NewAlunoService(
-	alunoRepo *repository.AlunoRepository,
-	cursoRepo *repository.CursoRepository,
-	inscricaoRepo *repository.InscricaoRepository,
-) *AlunoService {
-	return &AlunoService{
+	alunoRepo repository.AlunoRepository,
+	cursoRepo repository.CursoRepository,
+	inscricaoRepo repository.InscricaoRepository,
+) AlunoService {
+	return &alunoService{
 		alunoRepo:     alunoRepo,
 		cursoRepo:     cursoRepo,
 		inscricaoRepo: inscricaoRepo,
 	}
 }
 
-// AdicionarAluno gerencia a inclusão de um aluno em um curso
-func (s *AlunoService) AdicionarAluno(aluno *models.Aluno, cursoID uint) error {
-	// Verificar se o curso existe
+// ListarAlunos retorna todos os alunos cadastrados no sistema.
+func (s *alunoService) ListarAlunos() ([]models.Aluno, error) {
+	return s.alunoRepo.FindAll()
+}
+
+// ObterAlunoPorID busca um aluno pelo seu ID.
+func (s *alunoService) ObterAlunoPorID(id uint) (*models.Aluno, error) {
+	return s.alunoRepo.FindByID(id)
+}
+
+// CriarAluno cadastra um novo aluno no sistema.
+func (s *alunoService) CriarAluno(aluno *models.Aluno) error {
+	return s.alunoRepo.Save(aluno)
+}
+
+// AtualizarAluno atualiza os dados de um aluno existente.
+func (s *alunoService) AtualizarAluno(aluno *models.Aluno) error {
+	return s.alunoRepo.Update(aluno)
+}
+
+// RemoverAluno remove um aluno e suas inscrições do sistema.
+func (s *alunoService) RemoverAluno(id uint) error {
+	// Primeiro verificamos se o aluno existe
+	aluno, err := s.alunoRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	// Remover inscrições deste aluno
+	inscricoes, err := s.inscricaoRepo.FindByAlunoID(id)
+	if err != nil {
+		return fmt.Errorf("erro ao buscar inscrições do aluno: %w", err)
+	}
+
+	// Para cada inscrição, decrementar o contador de vagas no curso
+	for _, inscricao := range inscricoes {
+		// Decrementar vagas preenchidas no curso
+		if err := s.cursoRepo.DecrementarVagasPreenchidas(inscricao.CursoID); err != nil {
+			return fmt.Errorf("erro ao decrementar vagas no curso %d: %w", inscricao.CursoID, err)
+		}
+
+		// Remover a inscrição
+		if err := s.inscricaoRepo.Delete(inscricao.ID); err != nil {
+			return fmt.Errorf("erro ao remover inscrição %d: %w", inscricao.ID, err)
+		}
+	}
+
+	// Finalmente remover o aluno
+	return s.alunoRepo.Delete(aluno.ID)
+}
+
+// CadastrarAlunoEInscrever cadastra um novo aluno e o inscreve em um curso.
+func (s *alunoService) CadastrarAlunoEInscrever(aluno *models.Aluno, cursoID uint) error {
+	// Verificar se o curso existe e tem vagas
 	curso, err := s.cursoRepo.FindByID(cursoID)
 	if err != nil {
-		return errors.New("curso não encontrado")
+		return fmt.Errorf("erro ao buscar curso: %w", err)
 	}
 
-	// Verificar disponibilidade de vagas
 	if curso.VagasPreenchidas >= curso.VagasTotais {
-		return errors.New("não há vagas disponíveis para este curso")
+		return errors.New("não há vagas disponíveis no curso")
 	}
 
-	// Verificar se o aluno já existe pelo email
-	var alunoExistente *models.Aluno
-	var alunoID uint
-
-	if aluno.Email != "" {
-		alunoExistente, err = s.alunoRepo.FindByEmail(aluno.Email)
-		if err == nil {
-			// Aluno já existe
-			alunoID = alunoExistente.ID
-		} else {
-			// Aluno não existe, criar novo
-			if err := s.alunoRepo.Save(aluno); err != nil {
-				return err
-			}
-			alunoID = aluno.ID
-		}
-	} else {
-		return errors.New("email do aluno é obrigatório")
+	// Salvar o aluno
+	if err := s.alunoRepo.Save(aluno); err != nil {
+		return fmt.Errorf("erro ao salvar aluno: %w", err)
 	}
 
-	// Criar nova inscrição
+	// Criar uma inscrição
 	inscricao := &models.Inscricao{
-		AlunoID:       alunoID,
+		AlunoID:       aluno.ID,
 		CursoID:       cursoID,
 		DataInscricao: time.Now(),
 	}
 
-	// Tentar criar a inscrição
-	err = s.inscricaoRepo.Save(inscricao)
-	if err != nil {
-		// Este erro pode incluir "aluno já inscrito" se o repositório
-		// de inscrição implementar essa verificação
-		return err
+	if err := s.inscricaoRepo.Save(inscricao); err != nil {
+		deleteErr := s.alunoRepo.Delete(aluno.ID)
+		if deleteErr != nil {
+			return fmt.Errorf("erro ao salvar inscrição: %w e erro ao remover aluno: %v", err, deleteErr)
+		}
+		return fmt.Errorf("erro ao salvar inscrição: %w", err)
+	}
+
+	// Incrementar vagas preenchidas no curso
+	if err := s.cursoRepo.IncrementarVagasPreenchidas(cursoID); err != nil {
+		// Se falhar ao incrementar vagas, devemos remover a inscrição e o aluno
+		delInscErr := s.inscricaoRepo.Delete(inscricao.ID)
+		delAlunoErr := s.alunoRepo.Delete(aluno.ID)
+
+		if delInscErr != nil || delAlunoErr != nil {
+			return fmt.Errorf("erro ao incrementar vagas: %w, erro ao remover inscrição: %v, erro ao remover aluno: %v",
+				err, delInscErr, delAlunoErr)
+		}
+
+		return fmt.Errorf("erro ao incrementar vagas no curso: %w", err)
 	}
 
 	return nil
 }
 
-// ObterAlunoPorID busca um aluno específico
-func (s *AlunoService) ObterAlunoPorID(id uint) (*models.Aluno, error) {
-	aluno, err := s.alunoRepo.FindByID(id)
-	if err != nil {
-		return nil, errors.New("aluno não encontrado")
-	}
-	return aluno, nil
-}
-
-// ListarAlunos recupera todos os alunos
-func (s *AlunoService) ListarAlunos() ([]models.Aluno, error) {
-	return s.alunoRepo.FindAll()
-}
-
-// CriarAluno realiza a criação de um novo aluno
-func (s *AlunoService) CriarAluno(aluno *models.Aluno) error {
-	// Validações básicas
-	if aluno.Nome == "" {
-		return errors.New("nome do aluno é obrigatório")
-	}
-
-	if aluno.Email == "" {
-		return errors.New("email do aluno é obrigatório")
-	}
-
-	// Verificar se já existe aluno com este email
-	existente, _ := s.alunoRepo.FindByEmail(aluno.Email)
-	if existente != nil {
-		return errors.New("já existe um aluno cadastrado com este email")
-	}
-
-	return s.alunoRepo.Save(aluno)
-}
-
-// AtualizarAluno atualiza as informações de um aluno existente
-func (s *AlunoService) AtualizarAluno(aluno *models.Aluno) error {
+// AdicionarAlunoCurso inscreve um aluno existente em um curso.
+func (s *alunoService) AdicionarAlunoCurso(alunoID, cursoID uint) error {
 	// Verificar se o aluno existe
-	existente, err := s.alunoRepo.FindByID(aluno.ID)
+	aluno, err := s.alunoRepo.FindByID(alunoID)
 	if err != nil {
-		return errors.New("aluno não encontrado")
+		return fmt.Errorf("erro ao buscar aluno: %w", err)
 	}
 
-	// Manter campos importantes do registro original
-	if aluno.Nome == "" {
-		aluno.Nome = existente.Nome
+	// Verificar se o curso existe e tem vagas
+	curso, err := s.cursoRepo.FindByID(cursoID)
+	if err != nil {
+		return fmt.Errorf("erro ao buscar curso: %w", err)
 	}
 
-	if aluno.Email == "" {
-		aluno.Email = existente.Email
+	if curso.VagasPreenchidas >= curso.VagasTotais {
+		return errors.New("não há vagas disponíveis no curso")
 	}
 
-	return s.alunoRepo.Save(aluno)
+	// Verificar se o aluno já está inscrito no curso
+	_, err = s.inscricaoRepo.FindByAlunoECurso(alunoID, cursoID)
+	if err == nil {
+		return errors.New("aluno já está inscrito neste curso")
+	}
+
+	// Criar uma inscrição
+	inscricao := &models.Inscricao{
+		AlunoID:       aluno.ID,
+		CursoID:       curso.ID,
+		DataInscricao: time.Now(),
+	}
+
+	if err := s.inscricaoRepo.Save(inscricao); err != nil {
+		return fmt.Errorf("erro ao salvar inscrição: %w", err)
+	}
+
+	// Incrementar vagas preenchidas no curso
+	if err := s.cursoRepo.IncrementarVagasPreenchidas(cursoID); err != nil {
+		delErr := s.inscricaoRepo.Delete(inscricao.ID)
+		if delErr != nil {
+			return fmt.Errorf("erro ao incrementar vagas: %w e erro ao remover inscrição: %v", err, delErr)
+		}
+		return fmt.Errorf("erro ao incrementar vagas no curso: %w", err)
+	}
+
+	return nil
 }
 
-// RemoverAluno exclui um aluno
-func (s *AlunoService) RemoverAluno(id uint) error {
-	// Buscar aluno
-	aluno, err := s.alunoRepo.FindByID(id)
+// ListarInscricoesAluno retorna todas as inscrições de um aluno.
+func (s *alunoService) ListarInscricoesAluno(alunoID uint) ([]models.Inscricao, error) {
+	// Verificar se o aluno existe
+	_, err := s.alunoRepo.FindByID(alunoID)
 	if err != nil {
-		return errors.New("aluno não encontrado")
+		return nil, fmt.Errorf("erro ao buscar aluno: %w", err)
 	}
 
-	// Verificar se aluno tem inscrições ativas
-	inscricoes, err := s.inscricaoRepo.FindByAluno(id)
+	// Retornar inscrições do aluno
+	inscricoes, err := s.inscricaoRepo.FindByAlunoID(alunoID)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("erro ao buscar inscrições: %w", err)
 	}
 
-	if len(inscricoes) > 0 {
-		return errors.New("não é possível remover aluno com inscrições ativas")
-	}
-
-	return s.alunoRepo.Delete(aluno)
+	return inscricoes, nil
 }

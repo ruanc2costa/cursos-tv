@@ -54,7 +54,4 @@ type Curso struct {
 	Certificado      string     `gorm:"not null" json:"certificado"`
 	VagasTotais      int32      `gorm:"not null" json:"vagasTotais"`
 	VagasPreenchidas int32      `gorm:"not null" json:"vagasPreenchidas"`
-
-	AlunoID *uint  `gorm:"default:null" json:"alunoId,omitempty"`
-	Aluno   *Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
 }

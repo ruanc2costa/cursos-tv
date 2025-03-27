@@ -1,139 +1,86 @@
+// repository/inscricao_repository.go
 package repository
 
 import (
 	"errors"
-	"gorm.io/gorm"
+	"time"
 	"tvtec/models"
+
+	"gorm.io/gorm"
 )
 
-// InscricaoRepository gerencia as operações de persistência para a entidade Inscrição.
-type InscricaoRepository struct {
+type InscricaoRepository interface {
+	FindAll() ([]models.Inscricao, error)
+	FindByID(id uint) (*models.Inscricao, error)
+	FindByCursoID(cursoID uint) ([]models.Inscricao, error)
+	FindByAlunoID(alunoID uint) ([]models.Inscricao, error)
+	FindByAlunoECurso(alunoID, cursoID uint) (*models.Inscricao, error)
+	Save(inscricao *models.Inscricao) error
+	Delete(id uint) error
+}
+
+type inscricaoRepository struct {
 	db *gorm.DB
 }
 
-// NewInscricaoRepository cria uma nova instância do repositório com o DB injetado.
-func NewInscricaoRepository(db *gorm.DB) *InscricaoRepository {
-	return &InscricaoRepository{db: db}
+func NewInscricaoRepository(db *gorm.DB) InscricaoRepository {
+	return &inscricaoRepository{db: db}
 }
 
-// Save persiste a inscrição no banco de dados.
-func (r *InscricaoRepository) Save(inscricao *models.Inscricao) error {
-	// Validações antes de salvar
-	if inscricao.AlunoID == 0 || inscricao.CursoID == 0 {
-		return errors.New("AlunoID e CursoID são obrigatórios")
-	}
-
-	// Iniciar transação para garantir consistência
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Verificar disponibilidade de vagas no curso
-		var curso models.Curso
-		if err := tx.First(&curso, inscricao.CursoID).Error; err != nil {
-			return err
-		}
-
-		// Verificar se há vagas disponíveis
-		if curso.VagasPreenchidas >= curso.VagasTotais {
-			return errors.New("não há vagas disponíveis para este curso")
-		}
-
-		// Verificar se aluno já está inscrito
-		var existingInscricao models.Inscricao
-		if err := tx.Where("aluno_id = ? AND curso_id = ?",
-			inscricao.AlunoID, inscricao.CursoID).First(&existingInscricao).Error; err == nil {
-			return errors.New("aluno já está inscrito neste curso")
-		}
-
-		// Salvar inscrição
-		if err := tx.Create(inscricao).Error; err != nil {
-			return err
-		}
-
-		// Atualizar vagas preenchidas
-		curso.VagasPreenchidas++
-		if err := tx.Save(&curso).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+func (r *inscricaoRepository) FindAll() ([]models.Inscricao, error) {
+	var inscricoes []models.Inscricao
+	result := r.db.Find(&inscricoes)
+	return inscricoes, result.Error
 }
 
-// FindByID busca uma inscrição pelo ID.
-func (r *InscricaoRepository) FindByID(id uint) (*models.Inscricao, error) {
+func (r *inscricaoRepository) FindByID(id uint) (*models.Inscricao, error) {
 	var inscricao models.Inscricao
-
-	// Carregar inscrição com dados relacionados de Aluno e Curso
-	err := r.db.Preload("Aluno").Preload("Curso").First(&inscricao, id).Error
-	if err != nil {
-		return nil, err
+	result := r.db.First(&inscricao, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("inscrição não encontrada")
+		}
+		return nil, result.Error
 	}
-
 	return &inscricao, nil
 }
 
-// FindByAluno busca todas as inscrições de um aluno.
-func (r *InscricaoRepository) FindByAluno(alunoID uint) ([]models.Inscricao, error) {
+func (r *inscricaoRepository) FindByCursoID(cursoID uint) ([]models.Inscricao, error) {
 	var inscricoes []models.Inscricao
-
-	err := r.db.Where("aluno_id = ?", alunoID).
-		Preload("Curso").
-		Find(&inscricoes).Error
-
-	return inscricoes, err
+	result := r.db.Where("curso_id = ?", cursoID).Find(&inscricoes)
+	return inscricoes, result.Error
 }
 
-// FindByCurso busca todas as inscrições de um curso.
-func (r *InscricaoRepository) FindByCurso(cursoID uint) ([]models.Inscricao, error) {
+func (r *inscricaoRepository) FindByAlunoID(alunoID uint) ([]models.Inscricao, error) {
 	var inscricoes []models.Inscricao
-
-	err := r.db.Where("curso_id = ?", cursoID).
-		Preload("Aluno").
-		Find(&inscricoes).Error
-
-	return inscricoes, err
+	result := r.db.Where("aluno_id = ?", alunoID).Find(&inscricoes)
+	return inscricoes, result.Error
 }
 
-// Delete remove a inscrição do banco de dados.
-func (r *InscricaoRepository) Delete(inscricao *models.Inscricao) error {
-	// Iniciar transação para garantir consistência
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Recuperar o curso para atualizar vagas
-		var curso models.Curso
-		if err := tx.First(&curso, inscricao.CursoID).Error; err != nil {
-			return err
+func (r *inscricaoRepository) FindByAlunoECurso(alunoID, cursoID uint) (*models.Inscricao, error) {
+	var inscricao models.Inscricao
+	result := r.db.Where("aluno_id = ? AND curso_id = ?", alunoID, cursoID).First(&inscricao)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("inscrição não encontrada")
 		}
-
-		// Remover inscrição
-		if err := tx.Delete(inscricao).Error; err != nil {
-			return err
-		}
-
-		// Atualizar vagas preenchidas
-		curso.VagasPreenchidas--
-		if err := tx.Save(&curso).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+		return nil, result.Error
+	}
+	return &inscricao, nil
 }
 
-// CountByAluno conta o número de inscrições de um aluno.
-func (r *InscricaoRepository) CountByAluno(alunoID uint) (int64, error) {
-	var count int64
-	err := r.db.Model(&models.Inscricao{}).
-		Where("aluno_id = ?", alunoID).
-		Count(&count).Error
-
-	return count, err
+func (r *inscricaoRepository) Save(inscricao *models.Inscricao) error {
+	// Garantir que a data de inscrição seja definida
+	if inscricao.DataInscricao.IsZero() {
+		inscricao.DataInscricao = time.Now()
+	}
+	return r.db.Create(inscricao).Error
 }
 
-// CountByCurso conta o número de inscrições em um curso.
-func (r *InscricaoRepository) CountByCurso(cursoID uint) (int64, error) {
-	var count int64
-	err := r.db.Model(&models.Inscricao{}).
-		Where("curso_id = ?", cursoID).
-		Count(&count).Error
-
-	return count, err
+func (r *inscricaoRepository) Delete(id uint) error {
+	result := r.db.Delete(&models.Inscricao{}, id)
+	if result.RowsAffected == 0 {
+		return errors.New("inscrição não encontrada")
+	}
+	return result.Error
 }

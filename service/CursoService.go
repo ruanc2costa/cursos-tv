@@ -1,115 +1,92 @@
 package service
 
 import (
-	"errors"
-	"time"
-
 	"tvtec/models"
 	"tvtec/repository"
 )
 
-// CursoService contém a lógica de negócio para manipulação de cursos
-type CursoService struct {
-	repo *repository.CursoRepository
+type CursoService interface {
+	ListarCursos() ([]models.Curso, error)
+	ObterCursoPorID(id uint) (*models.Curso, error)
+	CriarCurso(curso *models.Curso) error
+	AtualizarCurso(curso *models.Curso) error
+	RemoverCurso(id uint) error
+	VerificarDisponibilidadeVagas(id uint) (int32, error)
+	ListarInscricoesCurso(cursoID uint) ([]models.Inscricao, error)
 }
 
-// NewCursoService cria uma nova instância do serviço de cursos
-func NewCursoService(repo *repository.CursoRepository) *CursoService {
-	return &CursoService{repo: repo}
+type cursoService struct {
+	cursoRepo     repository.CursoRepository
+	inscricaoRepo repository.InscricaoRepository
 }
 
-// CriarCurso realiza a criação de um novo curso com validações de negócio
-func (s *CursoService) CriarCurso(curso *models.Curso) error {
-	// Validações de negócio
-	if curso.Nome == "" {
-		return errors.New("nome do curso é obrigatório")
+func NewCursoService(
+	cursoRepo repository.CursoRepository,
+	inscricaoRepo repository.InscricaoRepository,
+) CursoService {
+	return &cursoService{
+		cursoRepo:     cursoRepo,
+		inscricaoRepo: inscricaoRepo,
 	}
-
-	if curso.Professor == "" {
-		return errors.New("professor do curso é obrigatório")
-	}
-
-	if curso.CargaHoraria <= 0 {
-		return errors.New("carga horária deve ser maior que zero")
-	}
-
-	if curso.VagasTotais <= 0 {
-		return errors.New("número de vagas deve ser maior que zero")
-	}
-
-	// Inicializa vagas preenchidas como zero
-	curso.VagasPreenchidas = 0
-
-	// Define data de criação como momento atual se não informada
-	if curso.Data.IsZero() {
-		curso.Data = models.CustomTime{Time: time.Now()}
-	}
-
-	// Persiste o curso
-	return s.repo.Save(curso)
 }
 
-// ObterCursoPorID busca um curso específico
-func (s *CursoService) ObterCursoPorID(id uint) (*models.Curso, error) {
-	curso, err := s.repo.FindByID(id)
+func (s *cursoService) ListarCursos() ([]models.Curso, error) {
+	return s.cursoRepo.FindAll()
+}
+
+func (s *cursoService) ObterCursoPorID(id uint) (*models.Curso, error) {
+	return s.cursoRepo.FindByID(id)
+}
+
+func (s *cursoService) CriarCurso(curso *models.Curso) error {
+	return s.cursoRepo.Save(curso)
+}
+
+func (s *cursoService) AtualizarCurso(curso *models.Curso) error {
+	return s.cursoRepo.Update(curso)
+}
+
+func (s *cursoService) RemoverCurso(id uint) error {
+	// Primeiro verificamos se o curso existe
+	curso, err := s.cursoRepo.FindByID(id)
 	if err != nil {
-		return nil, errors.New("curso não encontrado")
+		return err
 	}
-	return curso, nil
-}
 
-// ListarCursos recupera todos os cursos
-func (s *CursoService) ListarCursos() ([]models.Curso, error) {
-	return s.repo.FindAll()
-}
-
-// AtualizarCurso atualiza as informações de um curso existente
-func (s *CursoService) AtualizarCurso(curso *models.Curso) error {
-	// Verifica se o curso existe
-	existente, err := s.repo.FindByID(curso.ID)
+	// Verificamos se existem inscrições para este curso
+	inscricoes, err := s.inscricaoRepo.FindByCursoID(id)
 	if err != nil {
-		return errors.New("curso não encontrado para atualização")
+		return err
 	}
 
-	// Validações de negócio
-	if curso.Nome == "" {
-		curso.Nome = existente.Nome
+	// Se existem inscrições, precisamos removê-las primeiro
+	for _, inscricao := range inscricoes {
+		if err := s.inscricaoRepo.Delete(inscricao.ID); err != nil {
+			return err
+		}
 	}
 
-	if curso.Professor == "" {
-		curso.Professor = existente.Professor
-	}
-
-	// Mantém o controle de vagas original
-	curso.VagasPreenchidas = existente.VagasPreenchidas
-
-	// Persiste a atualização
-	return s.repo.Save(curso)
+	// Finalmente remover o curso
+	return s.cursoRepo.Delete(curso.ID)
 }
 
-// RemoverCurso exclui um curso
-func (s *CursoService) RemoverCurso(id uint) error {
-	// Busca o curso primeiro para garantir que existe
-	curso, err := s.repo.FindByID(id)
+func (s *cursoService) VerificarDisponibilidadeVagas(id uint) (int32, error) {
+	curso, err := s.cursoRepo.FindByID(id)
 	if err != nil {
-		return errors.New("curso não encontrado")
+		return 0, err
 	}
 
-	// Verifica se existem vagas preenchidas
-	if curso.VagasPreenchidas > 0 {
-		return errors.New("não é possível remover curso com inscrições ativas")
-	}
-
-	// Remove o curso
-	return s.repo.Delete(curso)
+	// Retorna o número de vagas disponíveis
+	return curso.VagasTotais - curso.VagasPreenchidas, nil
 }
 
-// VerificarDisponibilidadeVagas verifica se ainda há vagas disponíveis
-func (s *CursoService) VerificarDisponibilidadeVagas(cursoID uint) (bool, error) {
-	curso, err := s.repo.FindByID(cursoID)
+func (s *cursoService) ListarInscricoesCurso(cursoID uint) ([]models.Inscricao, error) {
+	// Verificar se o curso existe
+	_, err := s.cursoRepo.FindByID(cursoID)
 	if err != nil {
-		return false, errors.New("curso não encontrado")
+		return nil, err
 	}
 
-	return curso.VagasPreenchidas < curso.VagasTotais, nil
+	// Retornar inscrições do curso
+	return s.inscricaoRepo.FindByCursoID(cursoID)
 }

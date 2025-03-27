@@ -1,187 +1,218 @@
 package controller
 
 import (
+	"log"
 	"net/http"
 	"strconv"
-
-	"github.com/gin-gonic/gin"
 	"tvtec/models"
 	"tvtec/service"
+
+	"github.com/gin-gonic/gin"
 )
 
-// CursoController gerencia as rotas e lógica HTTP para cursos
-type CursoController struct {
-	service *service.CursoService
+type CursoController interface {
+	ListarCursos(c *gin.Context)
+	ObterCursoPorID(c *gin.Context)
+	CriarCurso(c *gin.Context)
+	AtualizarCurso(c *gin.Context)
+	RemoverCurso(c *gin.Context)
+	VerificarDisponibilidadeVagas(c *gin.Context)
+	ListarInscricoesCurso(c *gin.Context)
 }
 
-// NewCursoController cria uma nova instância do controlador de cursos
-func NewCursoController(service *service.CursoService) *CursoController {
-	return &CursoController{service: service}
+type cursoController struct {
+	cursoService service.CursoService
 }
 
-// CriarCurso lida com a criação de um novo curso
-func (c *CursoController) CriarCurso(ctx *gin.Context) {
-	var curso models.Curso
-
-	// Vincula os dados JSON da requisição ao modelo Curso
-	if err := ctx.ShouldBindJSON(&curso); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Dados inválidos",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Chama o serviço para criar o curso
-	if err := c.service.CriarCurso(&curso); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Falha ao criar curso",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Responde com sucesso e retorna o curso criado com ID gerado
-	ctx.JSON(http.StatusCreated, curso)
+func NewCursoController(cursoService service.CursoService) CursoController {
+	return &cursoController{cursoService: cursoService}
 }
 
-// ListarCursos recupera todos os cursos
-func (c *CursoController) ListarCursos(ctx *gin.Context) {
-	cursos, err := c.service.ListarCursos()
+func (ctrl *cursoController) ListarCursos(c *gin.Context) {
+	cursos, err := ctrl.cursoService.ListarCursos()
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Falha ao recuperar cursos",
-			"details": err.Error(),
-		})
+		log.Printf("Erro ao listar cursos: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao listar cursos"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, cursos)
+	c.JSON(http.StatusOK, cursos)
 }
 
-// ObterCursoPorID busca um curso específico
-func (c *CursoController) ObterCursoPorID(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-
-	// Converte o ID para uint
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func (ctrl *cursoController) ObterCursoPorID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "ID de curso inválido",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
 		return
 	}
 
-	curso, err := c.service.ObterCursoPorID(uint(id))
+	curso, err := ctrl.cursoService.ObterCursoPorID(uint(id))
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{
-			"error":   "Curso não encontrado",
-			"details": err.Error(),
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, curso)
+	c.JSON(http.StatusOK, curso)
 }
 
-// AtualizarCurso atualiza informações de um curso
-func (c *CursoController) AtualizarCurso(ctx *gin.Context) {
-	var curso models.Curso
+func (ctrl *cursoController) CriarCurso(c *gin.Context) {
+	var cursoDTO struct {
+		Nome         string `json:"nome" binding:"required"`
+		Professor    string `json:"professor" binding:"required"`
+		Data         string `json:"data" binding:"required"`
+		CargaHoraria int32  `json:"cargaHoraria" binding:"required"`
+		Certificado  string `json:"certificado" binding:"required"`
+		VagasTotais  int32  `json:"vagasTotais" binding:"required"`
+	}
 
-	// Vincula os dados JSON da requisição ao modelo Curso
-	if err := ctx.ShouldBindJSON(&curso); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Dados inválidos",
-			"details": err.Error(),
-		})
+	if err := c.ShouldBindJSON(&cursoDTO); err != nil {
+		log.Printf("Erro ao fazer bind do JSON: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
 		return
 	}
 
-	// Obtém o ID da URL
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "ID de curso inválido",
-		})
+	// Criar CustomTime a partir da string de data
+	var data models.CustomTime
+	if err := data.UnmarshalJSON([]byte(`"` + cursoDTO.Data + `"`)); err != nil {
+		log.Printf("Erro ao converter data: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Formato de data inválido. Use DD/MM/AAAA"})
 		return
 	}
 
-	// Define o ID do curso
-	curso.ID = uint(id)
+	curso := &models.Curso{
+		Nome:         cursoDTO.Nome,
+		Professor:    cursoDTO.Professor,
+		Data:         data,
+		CargaHoraria: cursoDTO.CargaHoraria,
+		Certificado:  cursoDTO.Certificado,
+		VagasTotais:  cursoDTO.VagasTotais,
+	}
 
-	// Chama o serviço para atualizar o curso
-	if err := c.service.AtualizarCurso(&curso); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Falha ao atualizar curso",
-			"details": err.Error(),
-		})
+	if err := ctrl.cursoService.CriarCurso(curso); err != nil {
+		log.Printf("Erro ao criar curso: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao criar curso"})
 		return
 	}
 
-	// Recupera o curso atualizado para retornar ao cliente
-	cursoAtualizado, err := c.service.ObterCursoPorID(uint(id))
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Curso atualizado, mas falha ao recuperar dados atualizados",
-		})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, cursoAtualizado)
+	c.JSON(http.StatusCreated, curso)
 }
 
-// RemoverCurso exclui um curso
-func (c *CursoController) RemoverCurso(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-
-	// Converte o ID para uint
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func (ctrl *cursoController) AtualizarCurso(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "ID de curso inválido",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
 		return
 	}
 
-	// Chama o serviço para remover o curso
-	if err := c.service.RemoverCurso(uint(id)); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Falha ao remover curso",
-			"details": err.Error(),
-		})
+	// Verificar se o curso existe
+	existingCurso, err := ctrl.cursoService.ObterCursoPorID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "Curso removido com sucesso",
+	var cursoDTO struct {
+		Nome         string `json:"nome"`
+		Professor    string `json:"professor"`
+		Data         string `json:"data"`
+		CargaHoraria *int32 `json:"cargaHoraria"`
+		Certificado  string `json:"certificado"`
+		VagasTotais  *int32 `json:"vagasTotais"`
+	}
+
+	if err := c.ShouldBindJSON(&cursoDTO); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
+		return
+	}
+
+	// Atualizar apenas os campos não vazios
+	if cursoDTO.Nome != "" {
+		existingCurso.Nome = cursoDTO.Nome
+	}
+	if cursoDTO.Professor != "" {
+		existingCurso.Professor = cursoDTO.Professor
+	}
+	if cursoDTO.Data != "" {
+		var data models.CustomTime
+		if err := data.UnmarshalJSON([]byte(`"` + cursoDTO.Data + `"`)); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Formato de data inválido. Use DD/MM/AAAA"})
+			return
+		}
+		existingCurso.Data = data
+	}
+	if cursoDTO.CargaHoraria != nil {
+		existingCurso.CargaHoraria = *cursoDTO.CargaHoraria
+	}
+	if cursoDTO.Certificado != "" {
+		existingCurso.Certificado = cursoDTO.Certificado
+	}
+	if cursoDTO.VagasTotais != nil {
+		// Verificamos se o novo número de vagas totais é pelo menos o número de vagas já preenchidas
+		if *cursoDTO.VagasTotais < existingCurso.VagasPreenchidas {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "O número de vagas totais não pode ser menor que o número de vagas já preenchidas"})
+			return
+		}
+		existingCurso.VagasTotais = *cursoDTO.VagasTotais
+	}
+
+	if err := ctrl.cursoService.AtualizarCurso(existingCurso); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao atualizar curso"})
+		return
+	}
+
+	c.JSON(http.StatusOK, existingCurso)
+}
+
+func (ctrl *cursoController) RemoverCurso(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	if err := ctrl.cursoService.RemoverCurso(uint(id)); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Curso removido com sucesso"})
+}
+
+func (ctrl *cursoController) VerificarDisponibilidadeVagas(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	vagasDisponiveis, err := ctrl.cursoService.VerificarDisponibilidadeVagas(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"vagasDisponiveis": vagasDisponiveis,
 	})
 }
 
-// VerificarDisponibilidadeVagas verifica se um curso tem vagas disponíveis
-func (c *CursoController) VerificarDisponibilidadeVagas(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-
-	// Converte o ID para uint
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func (ctrl *cursoController) ListarInscricoesCurso(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "ID de curso inválido",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
 		return
 	}
 
-	// Verifica disponibilidade de vagas
-	disponivel, err := c.service.VerificarDisponibilidadeVagas(uint(id))
+	inscricoes, err := ctrl.cursoService.ListarInscricoesCurso(uint(id))
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{
-			"error":   "Falha ao verificar disponibilidade",
-			"details": err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"disponivel": disponivel,
-	})
+	c.JSON(http.StatusOK, inscricoes)
 }

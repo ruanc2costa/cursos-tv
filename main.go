@@ -97,7 +97,7 @@ func main() {
 	inscricaoRepo := repository.NewInscricaoRepository(db)
 
 	// Instancia os serviços, injetando os repositórios necessários
-	cursoService := service.NewCursoService(cursoRepo)
+	cursoService := service.NewCursoService(cursoRepo, inscricaoRepo)
 	alunoService := service.NewAlunoService(alunoRepo, cursoRepo, inscricaoRepo)
 
 	// Instancia os controllers
@@ -144,7 +144,15 @@ func main() {
 		aluno.POST("", alunoController.CriarAluno) // Sem barra no final
 		aluno.PUT("/:id", alunoController.AtualizarAluno)
 		aluno.DELETE("/:id", alunoController.RemoverAluno)
-		aluno.POST("/curso/:cursoId", alunoController.AdicionarAlunoCurso)
+
+		// Nova rota para cadastro de aluno com inscrição automática em curso
+		aluno.POST("/inscricao", alunoController.CadastrarAlunoEInscrever)
+
+		// Rota para adicionar um aluno existente a um curso
+		aluno.POST("/:id/curso/:cursoId", alunoController.AdicionarAlunoCurso)
+
+		// Rota para listar inscrições de um aluno
+		aluno.GET("/:id/inscricoes", alunoController.ListarInscricoesAluno)
 	}
 
 	// Rotas para Curso (no singular)
@@ -160,6 +168,9 @@ func main() {
 		curso.PUT("/:id", cursoController.AtualizarCurso)
 		curso.DELETE("/:id", cursoController.RemoverCurso)
 		curso.GET("/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
+
+		// Nova rota para listar inscrições em um curso
+		curso.GET("/:id/inscricoes", cursoController.ListarInscricoesCurso)
 	}
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão

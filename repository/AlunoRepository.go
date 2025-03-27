@@ -1,60 +1,58 @@
 package repository
 
 import (
+	"errors"
+	"tvtec/models"
+
 	"gorm.io/gorm"
-	"tvtec/models" // ajuste o import para o caminho correto dos seus modelos
 )
 
-// AlunoRepository gerencia as operações de persistência para a entidade Aluno.
-type AlunoRepository struct {
+type AlunoRepository interface {
+	FindAll() ([]models.Aluno, error)
+	FindByID(id uint) (*models.Aluno, error)
+	Save(aluno *models.Aluno) error
+	Update(aluno *models.Aluno) error
+	Delete(id uint) error
+}
+
+type alunoRepository struct {
 	db *gorm.DB
 }
 
-// NewAlunoRepository cria uma nova instância do repositório com o DB injetado.
-func NewAlunoRepository(db *gorm.DB) *AlunoRepository {
-	return &AlunoRepository{db: db}
+func NewAlunoRepository(db *gorm.DB) AlunoRepository {
+	return &alunoRepository{db: db}
 }
 
-// Save persiste o aluno no banco de dados.
-func (r *AlunoRepository) Save(aluno *models.Aluno) error {
+func (r *alunoRepository) FindAll() ([]models.Aluno, error) {
+	var alunos []models.Aluno
+	result := r.db.Find(&alunos)
+	return alunos, result.Error
+}
+
+func (r *alunoRepository) FindByID(id uint) (*models.Aluno, error) {
+	var aluno models.Aluno
+	result := r.db.First(&aluno, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("aluno não encontrado")
+		}
+		return nil, result.Error
+	}
+	return &aluno, nil
+}
+
+func (r *alunoRepository) Save(aluno *models.Aluno) error {
+	return r.db.Create(aluno).Error
+}
+
+func (r *alunoRepository) Update(aluno *models.Aluno) error {
 	return r.db.Save(aluno).Error
 }
 
-// FindAll retorna todos os alunos registrados.
-func (r *AlunoRepository) FindAll() ([]models.Aluno, error) {
-	var alunos []models.Aluno
-	err := r.db.Find(&alunos).Error
-	return alunos, err
-}
-
-// FindByID busca um aluno pelo ID.
-func (r *AlunoRepository) FindByID(id uint) (*models.Aluno, error) {
-	var aluno models.Aluno
-	if err := r.db.First(&aluno, id).Error; err != nil {
-		return nil, err
+func (r *alunoRepository) Delete(id uint) error {
+	result := r.db.Delete(&models.Aluno{}, id)
+	if result.RowsAffected == 0 {
+		return errors.New("aluno não encontrado")
 	}
-	return &aluno, nil
-}
-
-// Delete remove o aluno do banco de dados.
-func (r *AlunoRepository) Delete(aluno *models.Aluno) error {
-	return r.db.Delete(aluno).Error
-}
-
-// FindByEmail busca um aluno pelo email.
-func (r *AlunoRepository) FindByEmail(email string) (*models.Aluno, error) {
-	var aluno models.Aluno
-	if err := r.db.Where("email = ?", email).First(&aluno).Error; err != nil {
-		return nil, err
-	}
-	return &aluno, nil
-}
-
-// FindByTelefone busca um aluno pelo telefone.
-func (r *AlunoRepository) FindByTelefone(telefone string) (*models.Aluno, error) {
-	var aluno models.Aluno
-	if err := r.db.Where("telefone = ?", telefone).First(&aluno).Error; err != nil {
-		return nil, err
-	}
-	return &aluno, nil
+	return result.Error
 }

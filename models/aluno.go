@@ -12,6 +12,4 @@ type Aluno struct {
 	Telefone string `json:"telefone"`
 	// DataNascto pode ser customizada na serialização JSON se for necessário o padrão dd/MM/yyyy.
 	DataNascto time.Time `gorm:"not null" json:"dataNascto"`
-	// Relação One-to-Many: um aluno pode ter muitos cursos.
-	Cursos []Curso `gorm:"foreignKey:AlunoID" json:"cursos"`
 }
