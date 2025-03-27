@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -15,10 +17,60 @@ import (
 	"tvtec/models"
 	"tvtec/repository"
 	"tvtec/service"
+
+	"github.com/joho/godotenv"
 )
+
+// Middleware para evitar redirecionamentos 307
+func noRedirectMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Garante que a URL não tenha barras duplas
+		path := c.Request.URL.Path
+		if strings.Contains(path, "//") {
+			cleanPath := strings.ReplaceAll(path, "//", "/")
+			log.Printf("URL com barras duplas detectada. Original: %s, Limpa: %s", path, cleanPath)
+			c.Request.URL.Path = cleanPath
+		}
+
+		// Remove a barra final da URL se existir e não for a raiz
+		if path != "/" && strings.HasSuffix(path, "/") {
+			cleanPath := strings.TrimSuffix(path, "/")
+			log.Printf("URL com barra final detectada. Original: %s, Limpa: %s", path, cleanPath)
+			c.Request.URL.Path = cleanPath
+		}
+
+		c.Next()
+	}
+}
+
+// Middleware para log de todas as requisições
+func requestLoggerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+
+		// Log da requisição
+		log.Printf("Requisição recebida: %s %s", c.Request.Method, c.Request.URL.Path)
+		if c.Request.Method == "POST" || c.Request.Method == "PUT" {
+			bodyBytes, _ := c.GetRawData()
+			if len(bodyBytes) > 0 {
+				log.Printf("Corpo da requisição: %s", string(bodyBytes))
+				// Restaura o corpo para que possa ser lido novamente pelo handler
+				c.Request.Body = &bytesBodyReader{bytes.NewReader(bodyBytes)}
+			}
+		}
+
+		// Processa a requisição
+		c.Next()
+
+		// Log da resposta
+		latency := time.Since(start)
+		log.Printf("Resposta: %d, Tempo: %v", c.Writer.Status(), latency)
+	}
+}
 
 func main() {
 	// Lê a connection string do banco de dados a partir da variável de ambiente DATABASE_URL
+	godotenv.Load()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("Variável de ambiente DATABASE_URL não definida")
@@ -52,44 +104,29 @@ func main() {
 	alunoController := controller.NewAlunoController(alunoService)
 	cursoController := controller.NewCursoController(cursoService)
 
-	// Inicializa o roteador Gin
+	// Inicializa o roteador Gin (mantendo o modo de debug para logs detalhados)
+	gin.SetMode(gin.DebugMode)
 	router := gin.New()
 
-	// Adiciona middleware de recuperação e logging
+	// Middleware personalizado para evitar redirecionamentos
+	router.Use(noRedirectMiddleware())
+
+	// Middleware de log de requisições (para debugging)
+	router.Use(requestLoggerMiddleware())
+
+	// Configuração CORS
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	corsConfig.ExposeHeaders = []string{"Content-Length"}
+	corsConfig.AllowCredentials = true
+	router.Use(cors.New(corsConfig))
+
+	// Adiciona middleware de recuperação
 	router.Use(gin.Recovery())
-	router.Use(gin.Logger())
 
-	// Adiciona middleware de CORS diretamente aqui
-	router.Use(func(c *gin.Context) {
-		// Permitir acesso de qualquer origem (incluindo HTTPS)
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-
-		// Permitir métodos HTTP específicos, incluindo suporte explícito para HTTPS
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-
-		// Permitir cabeçalhos específicos, incluindo aqueles usados para HTTPS
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With")
-
-		// Permitir credentials (cookies, etc.) - importante para sessões seguras em HTTPS
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-
-		// Tempo de cache do preflight
-		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 horas
-
-		// Se for uma requisição OPTIONS (preflight), retorna 204 No Content
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	})
-
-	// Middleware para log de todas as requisições (para debugging)
-	router.Use(func(c *gin.Context) {
-		log.Printf("[%s] Requisição recebida: %s %s", time.Now().Format(time.RFC3339), c.Request.Method, c.Request.URL.Path)
-		c.Next()
-	})
+	log.Println("Configuração CORS aplicada. Todos os origens permitidas.")
 
 	// Rota de verificação de saúde da API
 	router.GET("/health", func(c *gin.Context) {
@@ -102,12 +139,9 @@ func main() {
 	// Rotas para Aluno (no singular)
 	aluno := router.Group("/aluno")
 	{
-		aluno.GET("/", func(c *gin.Context) {
-			log.Println("Handler ListarAlunos chamado")
-			alunoController.ListarAlunos(c)
-		})
+		aluno.GET("", alunoController.ListarAlunos) // Sem barra no final
 		aluno.GET("/:id", alunoController.ObterAlunoPorID)
-		aluno.POST("/", alunoController.CriarAluno)
+		aluno.POST("", alunoController.CriarAluno) // Sem barra no final
 		aluno.PUT("/:id", alunoController.AtualizarAluno)
 		aluno.DELETE("/:id", alunoController.RemoverAluno)
 		aluno.POST("/curso/:cursoId", alunoController.AdicionarAlunoCurso)
@@ -116,28 +150,17 @@ func main() {
 	// Rotas para Curso (no singular)
 	curso := router.Group("/curso")
 	{
-		curso.GET("/", cursoController.ListarCursos)
+		// Importante: Rotas sem barra no final
+		curso.GET("", cursoController.ListarCursos)
 		curso.GET("/:id", cursoController.ObterCursoPorID)
-		curso.POST("/", func(c *gin.Context) {
+		curso.POST("", func(c *gin.Context) {
 			log.Println("Handler CriarCurso chamado")
-			// Log do corpo da requisição para debugging
-			bodyBytes, _ := c.GetRawData()
-			if len(bodyBytes) > 0 {
-				log.Printf("Corpo da requisição: %s", string(bodyBytes))
-				// Restaura o corpo para que possa ser lido novamente pelo handler
-				c.Request.Body = &bytesBodyReader{bytes.NewReader(bodyBytes)}
-			}
 			cursoController.CriarCurso(c)
 		})
 		curso.PUT("/:id", cursoController.AtualizarCurso)
 		curso.DELETE("/:id", cursoController.RemoverCurso)
 		curso.GET("/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
 	}
-
-	// Adiciona handler OPTIONS global para lidar com preflight CORS para todas as rotas
-	router.OPTIONS("/*path", func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
 	port := os.Getenv("PORT")
