@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"tvtec/controller"
+	"tvtec/middleware"
 	"tvtec/models"
 	"tvtec/repository"
 	"tvtec/service"
@@ -69,8 +70,16 @@ func requestLoggerMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	// Carregar variáveis de ambiente do arquivo .env
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Arquivo .env não encontrado. Usando variáveis de ambiente do sistema.")
+	}
+
+	// Inicializar configurações de autenticação
+	middleware.InitAuthConfig()
+
 	// Lê a connection string do banco de dados a partir da variável de ambiente DATABASE_URL
-	godotenv.Load()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("Variável de ambiente DATABASE_URL não definida")
@@ -103,9 +112,15 @@ func main() {
 	// Instancia os controllers
 	alunoController := controller.NewAlunoController(alunoService)
 	cursoController := controller.NewCursoController(cursoService)
+	authController := controller.NewAuthController()
 
-	// Inicializa o roteador Gin (mantendo o modo de debug para logs detalhados)
-	gin.SetMode(gin.DebugMode)
+	// Inicializa o roteador Gin (modo baseado em variável de ambiente)
+	ginMode := os.Getenv("GIN_MODE")
+	if ginMode != "" {
+		gin.SetMode(ginMode)
+	} else {
+		gin.SetMode(gin.DebugMode)
+	}
 	router := gin.New()
 
 	// Middleware personalizado para evitar redirecionamentos
@@ -136,41 +151,39 @@ func main() {
 		})
 	})
 
-	// Rotas para Aluno (no singular)
-	aluno := router.Group("/aluno")
+	// Rotas de autenticação
+	auth := router.Group("/auth")
 	{
-		aluno.GET("", alunoController.ListarAlunos) // Sem barra no final
-		aluno.GET("/:id", alunoController.ObterAlunoPorID)
-		aluno.POST("", alunoController.CriarAluno) // Sem barra no final
-		aluno.PUT("/:id", alunoController.AtualizarAluno)
-		aluno.DELETE("/:id", alunoController.RemoverAluno)
-
-		// Nova rota para cadastro de aluno com inscrição automática em curso
-		aluno.POST("/inscricao", alunoController.CadastrarAlunoEInscrever)
-
-		// Rota para adicionar um aluno existente a um curso
-		aluno.POST("/:id/curso/:cursoId", alunoController.AdicionarAlunoCurso)
-
-		// Rota para listar inscrições de um aluno
-		aluno.GET("/:id/inscricoes", alunoController.ListarInscricoesAluno)
+		auth.POST("/login", authController.Login)
+		auth.GET("/validate", middleware.AuthMiddleware(), authController.ValidateToken)
 	}
 
-	// Rotas para Curso (no singular)
-	curso := router.Group("/curso")
-	{
-		// Importante: Rotas sem barra no final
-		curso.GET("", cursoController.ListarCursos)
-		curso.GET("/:id", cursoController.ObterCursoPorID)
-		curso.POST("", func(c *gin.Context) {
-			log.Println("Handler CriarCurso chamado")
-			cursoController.CriarCurso(c)
-		})
-		curso.PUT("/:id", cursoController.AtualizarCurso)
-		curso.DELETE("/:id", cursoController.RemoverCurso)
-		curso.GET("/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
+	// Rotas públicas (sem autenticação)
+	// Rotas para Curso (apenas visualização)
+	router.GET("/curso", cursoController.ListarCursos)
+	router.GET("/curso/:id", cursoController.ObterCursoPorID)
+	router.GET("/curso/:id/vagas", cursoController.VerificarDisponibilidadeVagas)
 
-		// Nova rota para listar inscrições em um curso
-		curso.GET("/:id/inscricoes", cursoController.ListarInscricoesCurso)
+	// Rotas para inscrição de alunos (acessível sem autenticação)
+	router.POST("/aluno/inscricao", alunoController.CadastrarAlunoEInscrever)
+
+	// Rotas protegidas (requerem autenticação de admin)
+	admin := router.Group("/admin")
+	admin.Use(middleware.AdminAuthMiddleware())
+	{
+		// Administração de Cursos
+		admin.POST("/curso", cursoController.CriarCurso)
+		admin.PUT("/curso/:id", cursoController.AtualizarCurso)
+		admin.DELETE("/curso/:id", cursoController.RemoverCurso)
+		admin.GET("/curso/:id/inscricoes", cursoController.ListarInscricoesCurso)
+
+		// Administração de Alunos
+		admin.GET("/aluno", alunoController.ListarAlunos)
+		admin.GET("/aluno/:id", alunoController.ObterAlunoPorID)
+		admin.PUT("/aluno/:id", alunoController.AtualizarAluno)
+		admin.DELETE("/aluno/:id", alunoController.RemoverAluno)
+		admin.POST("/aluno/:id/curso/:cursoId", alunoController.AdicionarAlunoCurso)
+		admin.GET("/aluno/:id/inscricoes", alunoController.ListarInscricoesAluno)
 	}
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
