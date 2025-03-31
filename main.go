@@ -108,11 +108,13 @@ func main() {
 	// Instancia os serviços, injetando os repositórios necessários
 	cursoService := service.NewCursoService(cursoRepo, inscricaoRepo)
 	alunoService := service.NewAlunoService(alunoRepo, cursoRepo, inscricaoRepo)
+	inscricaoService := service.NewInscricaoService(inscricaoRepo)
 
 	// Instancia os controllers
 	alunoController := controller.NewAlunoController(alunoService)
 	cursoController := controller.NewCursoController(cursoService)
 	authController := controller.NewAuthController()
+	inscricaoController := controller.NewInscricaoController(inscricaoService)
 
 	// Inicializa o roteador Gin (modo baseado em variável de ambiente)
 	ginMode := os.Getenv("GIN_MODE")
@@ -184,6 +186,11 @@ func main() {
 		admin.DELETE("/aluno/:id", alunoController.RemoverAluno)
 		admin.POST("/aluno/:id/curso/:cursoId", alunoController.AdicionarAlunoCurso)
 		admin.GET("/aluno/:id/inscricoes", alunoController.ListarInscricoesAluno)
+
+		// NOVAS ROTAS: Administração de Inscrições
+		admin.GET("/inscricoes", inscricaoController.ListarInscricoes)
+		admin.GET("/inscricoes/:id", inscricaoController.ObterInscricaoPorID)
+		admin.POST("/relatorio", inscricaoController.GerarRelatorio)
 	}
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
