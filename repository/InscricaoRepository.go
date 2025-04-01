@@ -16,6 +16,7 @@ type InscricaoRepository interface {
 	FindByCurso(cursoID uint) ([]models.Inscricao, error)
 	FindByAlunoWithDetails(alunoID uint) ([]models.Inscricao, error)
 	FindByCursoWithDetails(cursoID uint) ([]models.Inscricao, error)
+	FindByAlunoECurso(alunoID uint, cursoID uint) (*models.Inscricao, error) // Método adicionado
 	Save(inscricao *models.Inscricao) error
 	Delete(id uint) error
 	CountByAluno(alunoID uint) (int64, error)
@@ -88,6 +89,19 @@ func (r *inscricaoRepository) FindByCursoWithDetails(cursoID uint) ([]models.Ins
 	var inscricoes []models.Inscricao
 	result := r.db.Where("curso_id = ?", cursoID).Preload("Aluno").Preload("Curso").Find(&inscricoes)
 	return inscricoes, result.Error
+}
+
+// Novo método: busca inscrição por aluno e curso
+func (r *inscricaoRepository) FindByAlunoECurso(alunoID uint, cursoID uint) (*models.Inscricao, error) {
+	var inscricao models.Inscricao
+	result := r.db.Where("aluno_id = ? AND curso_id = ?", alunoID, cursoID).First(&inscricao)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("inscrição não encontrada")
+		}
+		return nil, result.Error
+	}
+	return &inscricao, nil
 }
 
 func (r *inscricaoRepository) Save(inscricao *models.Inscricao) error {

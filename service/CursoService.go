@@ -53,8 +53,8 @@ func (s *cursoService) RemoverCurso(id uint) error {
 		return err
 	}
 
-	// Verificamos se existem inscrições para este curso
-	inscricoes, err := s.inscricaoRepo.FindByCursoID(id)
+	// Verificamos se existem inscrições para este curso usando o método FindByCurso
+	inscricoes, err := s.inscricaoRepo.FindByCurso(id)
 	if err != nil {
 		return err
 	}
@@ -87,6 +87,6 @@ func (s *cursoService) ListarInscricoesCurso(cursoID uint) ([]models.Inscricao, 
 		return nil, err
 	}
 
-	// Retornar inscrições do curso
-	return s.inscricaoRepo.FindByCursoID(cursoID)
+	// Retornar inscrições do curso usando o método FindByCurso
+	return s.inscricaoRepo.FindByCurso(cursoID)
 }
