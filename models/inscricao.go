@@ -11,7 +11,18 @@ type Inscricao struct {
 	CursoID       uint      `gorm:"not null" json:"cursoId"`
 	DataInscricao time.Time `gorm:"not null" json:"dataInscricao"`
 
-	// Associações (opcionais, mas úteis para carregamento relacionado)
+	// Novos campos adicionados
+	Escolaridade      string `json:"escolaridade"`
+	Trabalhando       string `json:"trabalhando"`
+	Bairro            string `json:"bairro"`
+	EhCuidador        string `json:"ehCuidador"`
+	EhPCD             string `json:"ehPCD"`
+	TipoPCD           string `json:"tipoPCD"`
+	NecessitaElevador string `json:"necessitaElevador"`
+	ComoSoube         string `json:"comoSoube"`
+	AutorizaWhatsApp  string `json:"autorizaWhatsApp"`
+
+	// Associações
 	Aluno Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
 	Curso Curso `gorm:"foreignKey:CursoID" json:"curso,omitempty"`
 }

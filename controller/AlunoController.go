@@ -1,270 +1,301 @@
 package controller
 
 import (
-	"log"
 	"net/http"
 	"strconv"
 	"time"
-	"tvtec/models"
-	"tvtec/service"
 
 	"github.com/gin-gonic/gin"
+	"tvtec/models"
+	"tvtec/service"
 )
 
-type AlunoController interface {
-	ListarAlunos(c *gin.Context)
-	ObterAlunoPorID(c *gin.Context)
-	CriarAluno(c *gin.Context)
-	AtualizarAluno(c *gin.Context)
-	RemoverAluno(c *gin.Context)
-	AdicionarAlunoCurso(c *gin.Context)
-	CadastrarAlunoEInscrever(c *gin.Context)
-	ListarInscricoesAluno(c *gin.Context)
+// AlunoController gerencia as rotas e lógica HTTP para alunos
+type AlunoController struct {
+	service service.AlunoService
 }
 
-type alunoController struct {
-	alunoService service.AlunoService
+// NewAlunoController cria uma nova instância do controlador de alunos
+func NewAlunoController(service service.AlunoService) *AlunoController {
+	return &AlunoController{service: service}
 }
 
-func NewAlunoController(alunoService service.AlunoService) AlunoController {
-	return &alunoController{alunoService: alunoService}
+// Estrutura para receber os dados do formulário
+type InscricaoRequest struct {
+	Nome              string `json:"nome"`
+	CPF               string `json:"cpf"`
+	Email             string `json:"email"`
+	Curso             uint   `json:"curso"`
+	Sexo              string `json:"sexo"`
+	DataNascto        string `json:"dataNascto"`
+	Telefone          string `json:"telefone"`
+	Escolaridade      string `json:"escolaridade"`
+	Trabalhando       string `json:"trabalhando"`
+	Bairro            string `json:"bairro"`
+	EhCuidador        string `json:"ehCuidador"`
+	EhPCD             string `json:"ehPCD"`
+	TipoPCD           string `json:"tipoPCD"`
+	NecessitaElevador string `json:"necessitaElevador"`
+	ComoSoube         string `json:"comoSoube"`
+	AutorizaWhatsApp  string `json:"autorizaWhatsApp"`
 }
 
-func (ctrl *alunoController) ListarAlunos(c *gin.Context) {
-	alunos, err := ctrl.alunoService.ListarAlunos()
+// CadastrarAlunoEInscrever cadastra um novo aluno e o inscreve em um curso
+func (c *AlunoController) CadastrarAlunoEInscrever(ctx *gin.Context) {
+	var request InscricaoRequest
+
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Dados de formulário inválidos",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Validações básicas
+	if request.Nome == "" || request.CPF == "" || request.Email == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Nome, CPF e email são campos obrigatórios",
+		})
+		return
+	}
+
+	if request.Curso == 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "É necessário selecionar um curso",
+		})
+		return
+	}
+
+	// Converter a data de nascimento de string para time.Time
+	dataNascto, err := time.Parse("02/01/2006", request.DataNascto)
 	if err != nil {
-		log.Printf("Erro ao listar alunos: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao listar alunos"})
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Formato de data inválido. Use DD/MM/AAAA",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, alunos)
-}
-
-func (ctrl *alunoController) ObterAlunoPorID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
-		return
-	}
-
-	aluno, err := ctrl.alunoService.ObterAlunoPorID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, aluno)
-}
-
-func (ctrl *alunoController) CriarAluno(c *gin.Context) {
-	var alunoDTO struct {
-		Nome       string `json:"nome" binding:"required"`
-		CPF        string `json:"cpf" binding:"required"`
-		Email      string `json:"email" binding:"required"`
-		Sexo       string `json:"sexo" binding:"required"`
-		Telefone   string `json:"telefone"`
-		DataNascto string `json:"dataNascto" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&alunoDTO); err != nil {
-		log.Printf("Erro ao fazer bind do JSON: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
-		return
-	}
-
-	// Converter string de data para time.Time
-	dataNascto, err := time.Parse("02/01/2006", alunoDTO.DataNascto)
-	if err != nil {
-		log.Printf("Erro ao converter data: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Formato de data inválido. Use DD/MM/AAAA"})
-		return
-	}
-
+	// Criar o objeto Aluno
 	aluno := &models.Aluno{
-		Nome:       alunoDTO.Nome,
-		CPF:        alunoDTO.CPF,
-		Email:      alunoDTO.Email,
-		Sexo:       alunoDTO.Sexo,
-		Telefone:   alunoDTO.Telefone,
+		Nome:       request.Nome,
+		CPF:        request.CPF,
+		Email:      request.Email,
+		Sexo:       request.Sexo,
+		Telefone:   request.Telefone,
 		DataNascto: dataNascto,
 	}
 
-	if err := ctrl.alunoService.CriarAluno(aluno); err != nil {
-		log.Printf("Erro ao criar aluno: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao criar aluno"})
+	// Criar o objeto de inscrição com os novos campos
+	inscricao := &models.Inscricao{
+		CursoID:           request.Curso,
+		DataInscricao:     time.Now(),
+		Escolaridade:      request.Escolaridade,
+		Trabalhando:       request.Trabalhando,
+		Bairro:            request.Bairro,
+		EhCuidador:        request.EhCuidador,
+		EhPCD:             request.EhPCD,
+		TipoPCD:           request.TipoPCD,
+		NecessitaElevador: request.NecessitaElevador,
+		ComoSoube:         request.ComoSoube,
+		AutorizaWhatsApp:  request.AutorizaWhatsApp,
+	}
+
+	// Chama o serviço para cadastrar o aluno e inscrevê-lo no curso
+	if err := c.service.CadastrarAlunoEInscrever(aluno, inscricao); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao cadastrar aluno e inscrever no curso",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, aluno)
-}
-
-func (ctrl *alunoController) AtualizarAluno(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
-		return
-	}
-
-	// Verificar se o aluno existe
-	existingAluno, err := ctrl.alunoService.ObterAlunoPorID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	var alunoDTO struct {
-		Nome       string `json:"nome"`
-		CPF        string `json:"cpf"`
-		Email      string `json:"email"`
-		Sexo       string `json:"sexo"`
-		Telefone   string `json:"telefone"`
-		DataNascto string `json:"dataNascto"`
-	}
-
-	if err := c.ShouldBindJSON(&alunoDTO); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
-		return
-	}
-
-	// Atualizar apenas os campos não vazios
-	if alunoDTO.Nome != "" {
-		existingAluno.Nome = alunoDTO.Nome
-	}
-	if alunoDTO.CPF != "" {
-		existingAluno.CPF = alunoDTO.CPF
-	}
-	if alunoDTO.Email != "" {
-		existingAluno.Email = alunoDTO.Email
-	}
-	if alunoDTO.Sexo != "" {
-		existingAluno.Sexo = alunoDTO.Sexo
-	}
-	if alunoDTO.Telefone != "" {
-		existingAluno.Telefone = alunoDTO.Telefone
-	}
-	if alunoDTO.DataNascto != "" {
-		dataNascto, err := time.Parse("02/01/2006", alunoDTO.DataNascto)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Formato de data inválido. Use DD/MM/AAAA"})
-			return
-		}
-		existingAluno.DataNascto = dataNascto
-	}
-
-	if err := ctrl.alunoService.AtualizarAluno(existingAluno); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao atualizar aluno"})
-		return
-	}
-
-	c.JSON(http.StatusOK, existingAluno)
-}
-
-func (ctrl *alunoController) RemoverAluno(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
-		return
-	}
-
-	if err := ctrl.alunoService.RemoverAluno(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Aluno removido com sucesso"})
-}
-
-func (ctrl *alunoController) AdicionarAlunoCurso(c *gin.Context) {
-	// Capturar ID do aluno da URL
-	alunoIDStr := c.Param("id")
-	alunoID, err := strconv.ParseUint(alunoIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID do aluno inválido"})
-		return
-	}
-
-	// Capturar ID do curso da URL
-	cursoIDStr := c.Param("cursoId")
-	cursoID, err := strconv.ParseUint(cursoIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID do curso inválido"})
-		return
-	}
-
-	err = ctrl.alunoService.AdicionarAlunoCurso(uint(alunoID), uint(cursoID))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Aluno inscrito no curso com sucesso"})
-}
-
-func (ctrl *alunoController) CadastrarAlunoEInscrever(c *gin.Context) {
-	var cadastroDTO struct {
-		Aluno struct {
-			Nome       string `json:"nome" binding:"required"`
-			CPF        string `json:"cpf" binding:"required"`
-			Email      string `json:"email" binding:"required"`
-			Sexo       string `json:"sexo" binding:"required"`
-			Telefone   string `json:"telefone"`
-			DataNascto string `json:"dataNascto" binding:"required"`
-		} `json:"aluno" binding:"required"`
-		CursoID uint `json:"cursoId" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&cadastroDTO); err != nil {
-		log.Printf("Erro ao fazer bind do JSON: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dados inválidos"})
-		return
-	}
-
-	// Converter string de data para time.Time
-	dataNascto, err := time.Parse("02/01/2006", cadastroDTO.Aluno.DataNascto)
-	if err != nil {
-		log.Printf("Erro ao converter data: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Formato de data inválido. Use DD/MM/AAAA"})
-		return
-	}
-
-	aluno := &models.Aluno{
-		Nome:       cadastroDTO.Aluno.Nome,
-		CPF:        cadastroDTO.Aluno.CPF,
-		Email:      cadastroDTO.Aluno.Email,
-		Sexo:       cadastroDTO.Aluno.Sexo,
-		Telefone:   cadastroDTO.Aluno.Telefone,
-		DataNascto: dataNascto,
-	}
-
-	if err := ctrl.alunoService.CadastrarAlunoEInscrever(aluno, cadastroDTO.CursoID); err != nil {
-		log.Printf("Erro ao cadastrar aluno e inscrever no curso: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
+	ctx.JSON(http.StatusCreated, gin.H{
+		"message": "Aluno cadastrado e inscrito com sucesso",
 		"aluno":   aluno,
-		"message": "Aluno cadastrado e inscrito no curso com sucesso",
 	})
 }
 
-func (ctrl *alunoController) ListarInscricoesAluno(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
+// ListarAlunos recupera todos os alunos
+func (c *AlunoController) ListarAlunos(ctx *gin.Context) {
+	alunos, err := c.service.ListarAlunos()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Falha ao recuperar alunos",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	inscricoes, err := ctrl.alunoService.ListarInscricoesAluno(uint(id))
+	ctx.JSON(http.StatusOK, alunos)
+}
+
+// ObterAlunoPorID busca um aluno específico
+func (c *AlunoController) ObterAlunoPorID(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+
+	// Converte o ID para uint
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, inscricoes)
+	aluno, err := c.service.ObterAlunoPorID(uint(id))
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"error":   "Aluno não encontrado",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, aluno)
+}
+
+// AtualizarAluno atualiza informações de um aluno
+func (c *AlunoController) AtualizarAluno(ctx *gin.Context) {
+	var aluno models.Aluno
+
+	// Vincula os dados JSON da requisição ao modelo Aluno
+	if err := ctx.ShouldBindJSON(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Dados inválidos",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Obtém o ID da URL
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	// Define o ID do aluno
+	aluno.ID = uint(id)
+
+	// Chama o serviço para atualizar o aluno
+	if err := c.service.AtualizarAluno(&aluno); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao atualizar aluno",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, aluno)
+}
+
+// RemoverAluno exclui um aluno
+func (c *AlunoController) RemoverAluno(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+
+	// Converte o ID para uint
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	// Chama o serviço para remover o aluno
+	if err := c.service.RemoverAluno(uint(id)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Falha ao remover aluno",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Aluno removido com sucesso",
+	})
+}
+
+// AdicionarAlunoCurso adiciona um aluno existente a um curso
+func (c *AlunoController) AdicionarAlunoCurso(ctx *gin.Context) {
+	alunoIDStr := ctx.Param("id")
+	cursoIDStr := ctx.Param("cursoId")
+
+	// Converte os IDs para uint
+	alunoID, err := strconv.ParseUint(alunoIDStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	cursoID, err := strconv.ParseUint(cursoIDStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de curso inválido",
+		})
+		return
+	}
+
+	// Dados adicionais para a inscrição
+	var inscricaoData models.Inscricao
+	if err := ctx.ShouldBindJSON(&inscricaoData); err == nil {
+		// Se foram fornecidos dados adicionais, usa-os
+		inscricaoData.AlunoID = uint(alunoID)
+		inscricaoData.CursoID = uint(cursoID)
+		inscricaoData.DataInscricao = time.Now()
+
+		// Chama o serviço para criar a inscrição com detalhes
+		if err := c.service.CriarInscricaoDetalhada(&inscricaoData); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Falha ao adicionar aluno ao curso",
+				"details": err.Error(),
+			})
+			return
+		}
+	} else {
+		// Se não foram fornecidos dados adicionais, usa o método básico
+		if err := c.service.AdicionarAlunoCurso(uint(alunoID), uint(cursoID)); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Falha ao adicionar aluno ao curso",
+				"details": err.Error(),
+			})
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Aluno adicionado ao curso com sucesso",
+	})
+}
+
+// ListarInscricoesAluno lista todas as inscrições de um aluno
+func (c *AlunoController) ListarInscricoesAluno(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+
+	// Converte o ID para uint
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "ID de aluno inválido",
+		})
+		return
+	}
+
+	inscricoes, err := c.service.ListarInscricoesAluno(uint(id))
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Falha ao recuperar inscrições",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, inscricoes)
 }

@@ -13,6 +13,8 @@ type AlunoRepository interface {
 	Save(aluno *models.Aluno) error
 	Update(aluno *models.Aluno) error
 	Delete(id uint) error
+	FindByCPF(cpf string) (*models.Aluno, error)
+	FindByEmail(email string) (*models.Aluno, error)
 }
 
 type alunoRepository struct {
@@ -55,4 +57,27 @@ func (r *alunoRepository) Delete(id uint) error {
 		return errors.New("aluno não encontrado")
 	}
 	return result.Error
+}
+
+func (r *alunoRepository) FindByCPF(cpf string) (*models.Aluno, error) {
+	var aluno models.Aluno
+	result := r.db.Where("cpf = ?", cpf).First(&aluno)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("aluno não encontrado")
+		}
+		return nil, result.Error
+	}
+	return &aluno, nil
+}
+func (r *alunoRepository) FindByEmail(email string) (*models.Aluno, error) {
+	var aluno models.Aluno
+	result := r.db.Where("email = ?", email).First(&aluno)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("aluno não encontrado")
+		}
+		return nil, result.Error
+	}
+	return &aluno, nil
 }
