@@ -4,16 +4,17 @@ import "time"
 
 // Aluno representa o modelo equivalente à entidade Java.
 // Aluno representa o modelo equivalente à entidade Java.
+// Versão corrigida
 type Aluno struct {
-	ID       uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	Nome     string `gorm:"not null" json:"nome"`
-	CPF      string `gorm:"not null" json:"cpf"`
-	Email    string `gorm:"not null" json:"email"`
-	Sexo     string `gorm:"not null" json:"sexo"`
-	Telefone string `json:"telefone"`
-	// DataNascto pode ser customizada na serialização JSON se for necessário o padrão dd/MM/yyyy.
+	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Nome       string    `gorm:"not null" json:"nome"`
+	CPF        string    `gorm:"not null;uniqueIndex" json:"cpf"`   // Adicionar uniqueIndex
+	Email      string    `gorm:"not null;uniqueIndex" json:"email"` // Adicionar uniqueIndex
+	Sexo       string    `gorm:"not null" json:"sexo"`
+	Telefone   string    `json:"telefone"`
 	DataNascto time.Time `gorm:"not null" json:"dataNascto"`
 
-	// Relação One-to-Many: um aluno pode ter muitos cursos.
-	Cursos []Curso `gorm:"foreignKey:AlunoID" json:"cursos"`
+	// Remover relação direta com Curso
+	// Em vez disso, podemos adicionar relação com Inscrições (se necessário)
+	Inscricoes []Inscricao `gorm:"foreignKey:AlunoID" json:"inscricoes,omitempty"`
 }

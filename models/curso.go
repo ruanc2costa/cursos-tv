@@ -54,4 +54,8 @@ type Curso struct {
 	Certificado      string     `gorm:"not null" json:"certificado"`
 	VagasTotais      int32      `gorm:"not null" json:"vagasTotais"`
 	VagasPreenchidas int32      `gorm:"not null" json:"vagasPreenchidas"`
+
+	// Remover referência direta a Aluno
+	// Em vez disso, podemos adicionar relação com Inscrições
+	Inscricoes []Inscricao `gorm:"foreignKey:CursoID" json:"inscricoes,omitempty"`
 }
