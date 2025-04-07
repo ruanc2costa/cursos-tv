@@ -191,6 +191,7 @@ func main() {
 		admin.GET("/inscricoes", inscricaoController.ListarInscricoes)
 		admin.GET("/inscricoes/:id", inscricaoController.ObterInscricaoPorID)
 		admin.POST("/relatorio", inscricaoController.GerarRelatorio)
+		admin.DELETE("inscricoes/:id", inscricaoController.CancelarInscricao)
 	}
 
 	// Define a porta a partir da variável de ambiente PORT ou utiliza 8080 como padrão
