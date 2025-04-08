@@ -59,7 +59,7 @@ func (s *inscricaoServiceImpl) CriarInscricao(inscricao *models.Inscricao) error
 
 	// Definir valores padrão para campos opcionais se não forem informados
 	if inscricao.EhPCD == "" {
-		inscricao.EhPCD = "não"
+		inscricao.EhPCD = "N"
 	}
 
 	// Definir a data de inscrição como a data atual se não for informada
@@ -68,12 +68,12 @@ func (s *inscricaoServiceImpl) CriarInscricao(inscricao *models.Inscricao) error
 	}
 
 	// Validações específicas para os novos campos
-	if inscricao.EhPCD == "sim" && inscricao.TipoPCD == "" {
+	if inscricao.EhPCD == "S" && inscricao.TipoPCD == "" {
 		return errors.New("quando marcado como PCD, o tipo de deficiência deve ser informado")
 	}
 
 	if inscricao.LevaNotebook == "" {
-		inscricao.LevaNotebook = "não"
+		inscricao.LevaNotebook = "N"
 	}
 
 	return s.inscricaoRepo.Save(inscricao)
