@@ -72,6 +72,10 @@ func (s *inscricaoServiceImpl) CriarInscricao(inscricao *models.Inscricao) error
 		return errors.New("quando marcado como PCD, o tipo de deficiência deve ser informado")
 	}
 
+	if inscricao.LevaNotebook == "" {
+		inscricao.LevaNotebook = "não"
+	}
+
 	return s.inscricaoRepo.Save(inscricao)
 }
 
