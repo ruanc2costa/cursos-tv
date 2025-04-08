@@ -21,7 +21,7 @@ type Inscricao struct {
 	NecessitaElevador string `json:"necessitaElevador"`
 	ComoSoube         string `json:"comoSoube"`
 	AutorizaWhatsApp  string `json:"autorizaWhatsApp"`
-	LevaNotebook      string `json:"levaNotebook"`
+	LevaNotebook      string `json:"levaNotebook,omitempty"`
 
 	// Associações
 	Aluno Aluno `gorm:"foreignKey:AlunoID" json:"aluno,omitempty"`
