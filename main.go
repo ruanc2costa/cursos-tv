@@ -109,12 +109,14 @@ func main() {
 	cursoService := service.NewCursoService(cursoRepo, inscricaoRepo)
 	alunoService := service.NewAlunoService(alunoRepo, cursoRepo, inscricaoRepo)
 	inscricaoService := service.NewInscricaoService(inscricaoRepo)
+	powerBIService := service.NewPowerBIService() // Novo serviço Power BI
 
 	// Instancia os controllers
 	alunoController := controller.NewAlunoController(alunoService)
 	cursoController := controller.NewCursoController(cursoService)
 	authController := controller.NewAuthController()
 	inscricaoController := controller.NewInscricaoController(inscricaoService)
+	powerBIController := controller.NewPowerBIController(powerBIService) // Novo controller Power BI
 
 	// Inicializa o roteador Gin (modo baseado em variável de ambiente)
 	ginMode := os.Getenv("GIN_MODE")
@@ -168,6 +170,22 @@ func main() {
 
 	// Rotas para inscrição de alunos (acessível sem autenticação)
 	router.POST("/aluno/inscricao", alunoController.CadastrarAlunoEInscrever)
+
+	// Rotas para o Power BI (requerem autenticação)
+	powerbi := router.Group("/powerbi")
+	powerbi.Use(middleware.AuthMiddleware())
+	{
+		powerbi.GET("/token", powerBIController.GetEmbedToken)
+
+		// Rota de teste para verificar se o endpoint está funcionando
+		powerbi.GET("/teste", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status":    "ok",
+				"message":   "Endpoint do PowerBI funcionando",
+				"timestamp": time.Now().Format(time.RFC3339),
+			})
+		})
+	}
 
 	// Rotas protegidas (requerem autenticação de admin)
 	admin := router.Group("/admin")
