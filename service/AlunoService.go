@@ -109,32 +109,50 @@ func (s *alunoServiceImpl) RemoverAluno(id uint) error {
 }
 
 func (s *alunoServiceImpl) CadastrarAlunoEInscrever(aluno *models.Aluno, inscricao *models.Inscricao) error {
+	// Tenta encontrar o aluno pelo email
+	alunoExistente, _ := s.alunoRepo.FindByEmail(aluno.Email)
+	if alunoExistente != nil {
+		// O aluno já existe: usa o registro existente
+		aluno = alunoExistente
+	} else {
+		// Se não encontrou pelo email, pode verificar pelo CPF, se necessário
+		existenteCPF, _ := s.alunoRepo.FindByCPF(aluno.CPF)
+		if existenteCPF != nil {
+			aluno = existenteCPF
+		} else {
+			// Se o aluno não existe, salva o novo aluno
+			if err := s.alunoRepo.Save(aluno); err != nil {
+				return err
+			}
+		}
+	}
 
-	// Verificar se o curso existe
+	// Verifica se o curso existe
 	curso, err := s.cursoRepo.FindByID(inscricao.CursoID)
 	if err != nil {
 		return errors.New("curso não encontrado")
 	}
 
-	// Verificar disponibilidade de vagas
+	// Verifica disponibilidade de vagas
 	if curso.VagasPreenchidas >= curso.VagasTotais {
 		return errors.New("não há vagas disponíveis para este curso")
 	}
 
-	// Salvar o aluno
-	if err := s.alunoRepo.Save(aluno); err != nil {
-		return err
+	// Opcional: Verifica se já existe inscrição para este aluno e curso
+	inscricaoExistente, _ := s.inscricaoRepo.FindByAlunoECurso(aluno.ID, curso.ID)
+	if inscricaoExistente != nil {
+		return errors.New("já existe uma inscrição para este curso")
 	}
 
-	// Associar o aluno à inscrição
+	// Associa o aluno à inscrição
 	inscricao.AlunoID = aluno.ID
 
-	// Definir valores padrão para campos opcionais
+	// Define valor padrão para campos opcionais
 	if inscricao.EhPCD == "" {
 		inscricao.EhPCD = "não"
 	}
 
-	// Salvar a inscrição
+	// Salva a inscrição
 	if err := s.inscricaoRepo.Save(inscricao); err != nil {
 		return err
 	}
