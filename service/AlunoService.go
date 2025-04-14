@@ -109,16 +109,6 @@ func (s *alunoServiceImpl) RemoverAluno(id uint) error {
 }
 
 func (s *alunoServiceImpl) CadastrarAlunoEInscrever(aluno *models.Aluno, inscricao *models.Inscricao) error {
-	// Verificar se já existe aluno com este email ou CPF
-	existente, _ := s.alunoRepo.FindByEmail(aluno.Email)
-	if existente != nil {
-		return errors.New("já existe um aluno cadastrado com este email")
-	}
-
-	existenteCPF, _ := s.alunoRepo.FindByCPF(aluno.CPF)
-	if existenteCPF != nil {
-		return errors.New("já existe um aluno cadastrado com este CPF")
-	}
 
 	// Verificar se o curso existe
 	curso, err := s.cursoRepo.FindByID(inscricao.CursoID)
