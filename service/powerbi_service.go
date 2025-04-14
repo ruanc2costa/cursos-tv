@@ -1,4 +1,4 @@
-package service
+/*package service
 
 import (
 	"bytes"
@@ -155,3 +155,4 @@ func (s *powerBIService) GetDashboardEmbedToken(dashboardID, groupID, datasetID 
 
 	return embedConfig, nil
 }
+*/
