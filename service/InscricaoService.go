@@ -19,15 +19,17 @@ type InscricaoService interface {
 	GerarRelatorio(dados []map[string]interface{}) error
 }
 
-// Implementação concreta do serviço
+// Atualize a definição do service para incluir o cursoRepo.
 type inscricaoServiceImpl struct {
 	inscricaoRepo repository.InscricaoRepository
+	cursoRepo     repository.CursoRepository // Novo campo para acesso ao curso
 }
 
-// Função construtora
-func NewInscricaoService(inscricaoRepo repository.InscricaoRepository) InscricaoService {
+// Modifique o construtor para receber também o cursoRepo.
+func NewInscricaoService(inscricaoRepo repository.InscricaoRepository, cursoRepo repository.CursoRepository) InscricaoService {
 	return &inscricaoServiceImpl{
 		inscricaoRepo: inscricaoRepo,
+		cursoRepo:     cursoRepo,
 	}
 }
 
@@ -55,6 +57,18 @@ func (s *inscricaoServiceImpl) ObterInscricaoPorID(id uint) (*models.Inscricao, 
 func (s *inscricaoServiceImpl) CriarInscricao(inscricao *models.Inscricao) error {
 	if inscricao.AlunoID == 0 || inscricao.CursoID == 0 {
 		return errors.New("aluno e curso são obrigatórios para uma inscrição")
+	}
+
+	// Busca os detalhes do curso para validar a data
+	curso, err := s.cursoRepo.FindByID(inscricao.CursoID)
+	if err != nil {
+		return errors.New("curso não encontrado")
+	}
+
+	// Verifica se a data do curso já passou
+	// Aqui consideramos que o curso.Data é do tipo CustomTime (embora o campo encapsule um time.Time)
+	if curso.Data.Before(time.Now()) {
+		return errors.New("não é possível se inscrever, o dia do curso já passou")
 	}
 
 	// Definir valores padrão para campos opcionais se não forem informados
